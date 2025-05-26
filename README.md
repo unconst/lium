@@ -2,8 +2,6 @@
 
 Your one-stop command-line interface for managing compute resources on [CeliumCompute.ai](https://celiumcompute.ai).
 
-[![PyPI version](https://img.shields.io/pypi/v/lium.svg)](https://pypi.org/project/lium/) [![Build Status](https://img.shields.io/travis/yourusername/lium.svg)](https://travis-ci.org/yourusername/lium) ![Python versions](https://img.shields.io/pypi/pyversions/lium.svg)
-
 ---
 
 **Lium CLI** empowers you to effortlessly list, launch, and manage high-performance GPU executors directly from your terminal. Designed for speed and simplicity, it features a minimalist monochrome interface (with Solarized themes available!) and intuitive commands.
