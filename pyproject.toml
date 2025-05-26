@@ -1,0 +1,18 @@
+[project]
+name = "lium"
+version = "0.1.0"
+description = "CLI tool for managing lium executors"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+lium = "lium.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
