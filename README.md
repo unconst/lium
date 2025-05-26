@@ -1,179 +1,148 @@
-# Lium CLI
+# Lium CLI 🚀
 
-A command-line interface for managing Lium compute executors with beautiful Solarized color themes.
+Your one-stop command-line interface for managing compute resources on [CeliumCompute.ai](https://celiumcompute.ai).
 
-## Features
+[![PyPI version](https://img.shields.io/pypi/v/lium.svg)](https://pypi.org/project/lium/) [![Build Status](https://img.shields.io/travis/yourusername/lium.svg)](https://travis-ci.org/yourusername/lium) ![Python versions](https://img.shields.io/pypi/pyversions/lium.svg)
 
-- 🎨 **Solarized Color Themes**: Beautiful dark and light themes based on the Solarized color palette
-- 📊 **Rich Display**: Elegant tables and panels for executor information
-- 🔄 **Theme Switching**: Switch between dark and light themes on the fly
-- 🔑 **Flexible Authentication**: Multiple ways to manage API keys
-- 🐍 **Python API**: Use the client library directly in your Python code
-- 🔍 **Interactive Browsing**: Drill down from GPU type summary to detailed executor listings
+---
 
-## Installation
+**Lium CLI** empowers you to effortlessly list, launch, and manage high-performance GPU executors directly from your terminal. Designed for speed and simplicity, it features a minimalist monochrome interface (with Solarized themes available!) and intuitive commands.
 
-Install using [uv](https://github.com/astral-sh/uv):
+## ✨ Features
 
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd lium
+*   **Effortless Executor Discovery**: `lium ls` shows available GPU types, prices, and lets you drill down to find the perfect machine with detailed specs (VRAM, RAM, Disk, Network, etc.) sorted by Pareto optimality.
+*   **Quick Pod Launching**: `lium up <EXECUTOR_HUID_OR_ID> [POD_NAME] [--template-id <ID>] [-y]` gets your environment running in seconds.
+    *   Interactive template selection if no template ID is provided.
+    *   Defaults to the first available template with `-y` for rapid deployment.
+    *   Supports launching on multiple executors at once.
+*   **Pod Management**: `lium ps` lists your active pods with HUIDs, status (color-coded!), cost, uptime, and SSH details.
+*   **Easy Termination**: `lium down <POD_HUID_OR_ID | POD_HUID1,POD_HUID2... | POD_HUID1 POD_HUID2...> [--all] [-y]` to stop one, many, or all pods.
+*   **Human-Readable IDs (HUIDs)**: Short, memorable names (e.g., `swift-hawk-a7`) for executors and pods, making them easy to reference.
+*   **Flexible Configuration**: `lium config [get|set|unset|show|path]` for managing your API key, SSH key paths, and other preferences in `~/.lium/config.json`.
+*   **Theming**: Switch between `mono` (default dark), `mono-light`, `solarized`, and `solarized-light` themes with `lium theme <THEME_NAME>`.
 
-# Install with uv
-uv pip install -e .
-```
+## 🏁 Getting Started
 
-Or install directly with pip:
+### 1. Installation
 
-```bash
-pip install -e .
-```
-
-## Configuration
-
-Before using the CLI, you need to set your API key. You can do this in one of three ways:
-
-### 1. Environment Variable
+Make sure you have Python 3.10+ installed.
 
 ```bash
-export LIUM_API_KEY="your-api-key-here"
+# Recommended: Install with uv (super fast Python package installer)
+# If you don't have uv: pip install uv
+uv pip install lium
+
+# Or, using pip directly:
+pip install lium
 ```
 
-### 2. Config Command
+(For development, clone this repository and run `uv pip install -e .` in the project directory.)
 
+### 2. Get Your API Key
+
+You'll need an API key from [CeliumCompute.ai](https://celiumcompute.ai). 
+
+1.  Sign up or log in to your CeliumCompute account.
+2.  Navigate to your API key settings (usually in your account or profile section).
+3.  Generate or copy your API key.
+
+### 3. Configure Lium CLI
+
+Set your API key (this is required):
 ```bash
-lium config set-api-key "your-api-key-here"
+lium config set api_key YOUR_API_KEY_HERE
 ```
 
-This will save the API key to `~/.lium/config`.
-
-### 3. Command Line Option
-
+Set the path to your **public** SSH key. This key will be automatically added to new pods you create, allowing you to SSH in.
 ```bash
-lium ls --api-key "your-api-key-here"
+lium config set ssh.key_path ~/.ssh/your_public_key.pub
+```
+(Replace `~/.ssh/your_public_key.pub` with the actual path to your public SSH key.)
+
+To see your current configuration:
+```bash
+lium config show
 ```
 
-## Usage
+To see where the config file is stored:
+```bash
+lium config path
+```
 
-### List Available Executors
+## 🚀 Usage Examples
 
-The `lium ls` command now provides an interactive two-stage view:
+**1. List available GPU executor types:**
 
 ```bash
 lium ls
 ```
+This will show a summary table. Enter a GPU type (e.g., `H100`) to see detailed specs for available executors of that type, sorted by Pareto optimality (best bang for your buck across multiple specs!).
 
-#### Stage 1: GPU Type Summary
-First, you'll see a summary table showing:
-- **GPU Type**: Model number (e.g., 4090, H100, A100)
-- **Min $/GPU**: Lowest price per GPU for this type
-- **Max $/GPU**: Highest price per GPU (or "-" if all same price)
-- **Available**: Total number of GPUs of this type
-
-#### Stage 2: Detailed View
-After viewing the summary, you can:
-- Enter a GPU type (e.g., "4090", "H100") to see all executors with that GPU
-- Press Enter to exit
-
-The detailed view shows:
-- **Configuration**: Number of GPUs (e.g., 8x4090)
-- **$/GPU**: Price per individual GPU
-- **Country**: Location of the executor
-- **Storage**: Available disk space in GB
-- **Bandwidth**: Upload/download speeds in Mbps
-
-### Theme Switching
-
-The CLI uses Solarized Dark theme by default. You can switch between themes:
+**2. Launch a new pod:**
 
 ```bash
-# Switch to light theme
-lium theme light
+# Launch a pod on an executor (identified by its HUID from 'lium ls')
+# This will prompt you to select a template if --template-id is not given
+lium up swift-hawk-a7 my-first-pod
 
-# Switch back to dark theme
-lium theme dark
+# Launch using a specific template and the default first template with -y (yes to all prompts)
+lium up brave-lion-3c my-fast-pod --template-id xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+lium up clever-fox-b2 --yes # Uses default name (HUID) and first template
+
+# Launch multiple pods with a name prefix, using the default template automatically
+lium up cosmic-eagle-1a,digital-viper-2b my-batch-pods --yes 
 ```
 
-## Styling System
-
-Lium uses a comprehensive styling toolkit based on Solarized colors. The styling system provides:
-
-- Consistent color scheme across all commands
-- Semantic color usage (success=green, error=red, etc.)
-- Beautiful tables with alternating row backgrounds
-- Styled panels and borders
-- Syntax highlighting for code output
-
-### Using the Style Toolkit in Your Code
-
-```python
-from lium.display import StyledConsole
-
-# Create a styled console
-console = StyledConsole()
-
-# Print styled messages
-console.print_success("Operation completed successfully")
-console.print_error("An error occurred")
-console.print_warning("This is a warning")
-console.print_info("Information message")
-
-# Print key-value pairs
-console.print_key_value("Status", "Active")
-console.print_key_value("Price", "$0.50/hour")
-
-# Create styled panels
-panel = console.create_panel(
-    "Panel content here",
-    title="Panel Title",
-    box_style="rounded"  # or "heavy", "double"
-)
-```
-
-## Python API Usage
-
-You can also use the Lium API client directly in Python:
-
-```python
-from lium.api import LiumAPIClient
-from lium.config import get_api_key
-
-# Get API key from environment or config
-api_key = get_api_key()
-
-# Or use your API key directly
-api_key = "your-api-key-here"
-
-# Create client
-client = LiumAPIClient(api_key)
-
-# Get all executors
-executors = client.get_executors()
-
-# Filter executors with specific GPUs
-rtx_4090_executors = [
-    e for e in executors 
-    if "RTX 4090" in e.get("machine_name", "")
-]
-
-# Find cheapest executor
-cheapest = min(executors, key=lambda x: x.get("price_per_hour", float('inf')))
-print(f"Cheapest executor: {cheapest['machine_name']} at ${cheapest['price_per_hour']}/hour")
-```
-
-## Development
-
-To set up a development environment:
+**3. List your active pods:**
 
 ```bash
-# Create a virtual environment with uv
-uv venv
+lium ps
+```
+Output includes a human-readable "Name" (HUID), the label you gave it, status, GPU config, cost, uptime, and SSH command.
 
-# Install in development mode
-uv pip install -e .
+**4. SSH into a pod:**
+
+Copy the SSH command from `lium ps` output and paste it into your terminal.
+
+**5. Terminate pods:**
+
+```bash
+# Terminate a single pod by its Name (HUID from 'lium ps')
+lium down swift-hawk-a7
+
+# Terminate multiple pods (space or comma-separated Names/HUIDs)
+lium down brave-lion-3c clever-fox-b2,cosmic-eagle-1a
+
+# Terminate all your active pods (will ask for confirmation)
+lium down --all
+
+# Terminate all without confirmation
+lium down --all -y
 ```
 
-## License
+**6. Change CLI theme:**
 
-[Your License Here]
+```bash
+lium theme solarized-light
+lium theme mono # Back to default dark monochrome
+```
+
+## 🛠️ Configuration Keys
+
+*   `api_key` (string, required): Your CeliumCompute.ai API key.
+*   `ssh.key_path` (string, required): Absolute path to your *public* SSH key file (e.g., `~/.ssh/id_ed25519.pub`). One key per line if the file contains multiple.
+*   `user.default_region` (string, optional): Future use for setting a default deployment region.
+
+Use `lium config set <key> <value>` to manage these. For nested keys, use dot notation (e.g., `lium config set ssh.key_path ~/.ssh/another_key.pub`).
+
+## 🤝 Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## 📜 License
+
+[Specify Your License Here - e.g., MIT License]
+
+---
+
+Happy Computing with Lium! 🎉
