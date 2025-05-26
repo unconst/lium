@@ -67,8 +67,8 @@ lium ls
 #### Stage 1: GPU Type Summary
 First, you'll see a summary table showing:
 - **GPU Type**: Model number (e.g., 4090, H100, A100)
-- **Min $/GPU/Hour**: Lowest price per GPU for this type
-- **Max $/GPU/Hour**: Highest price per GPU (or "-" if all same price)
+- **Min $/GPU**: Lowest price per GPU for this type
+- **Max $/GPU**: Highest price per GPU (or "-" if all same price)
 - **Available**: Total number of GPUs of this type
 
 #### Stage 2: Detailed View
@@ -78,7 +78,7 @@ After viewing the summary, you can:
 
 The detailed view shows:
 - **Configuration**: Number of GPUs (e.g., 8x4090)
-- **$/GPU/Hour**: Price per individual GPU
+- **$/GPU**: Price per individual GPU
 - **Country**: Location of the executor
 - **Storage**: Available disk space in GB
 - **Bandwidth**: Upload/download speeds in Mbps
