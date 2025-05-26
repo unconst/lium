@@ -4,22 +4,7 @@ Your one-stop command-line interface for managing compute resources on [CeliumCo
 
 ---
 
-**Lium CLI** empowers you to effortlessly list, launch, and manage high-performance GPU executors directly from your terminal. Designed for speed and simplicity, it features a minimalist monochrome interface (with Solarized themes available!) and intuitive commands.
-
-## ✨ Features
-
-*   **Effortless Executor Discovery**: `lium ls` shows available GPU types, prices, and lets you drill down to find the perfect machine with detailed specs (VRAM, RAM, Disk, Network, etc.) sorted by Pareto optimality.
-*   **Quick Pod Launching**: `lium up <EXECUTOR_HUID_OR_ID> [POD_NAME] [--template-id <ID>] [-y]` gets your environment running in seconds.
-    *   Interactive template selection if no template ID is provided.
-    *   Defaults to the first available template with `-y` for rapid deployment.
-    *   Supports launching on multiple executors at once.
-*   **Pod Management**: `lium ps` lists your active pods with HUIDs, status (color-coded!), cost, uptime, and SSH details.
-*   **Easy Termination**: `lium down <POD_HUID_OR_ID | POD_HUID1,POD_HUID2... | POD_HUID1 POD_HUID2...> [--all] [-y]` to stop one, many, or all pods.
-*   **Human-Readable IDs (HUIDs)**: Short, memorable names (e.g., `swift-hawk-a7`) for executors and pods, making them easy to reference.
-*   **Flexible Configuration**: `lium config [get|set|unset|show|path]` for managing your API key, SSH key paths, and other preferences in `~/.lium/config.json`.
-*   **Theming**: Switch between `mono` (default dark), `mono-light`, `solarized`, and `solarized-light` themes with `lium theme <THEME_NAME>`.
-
-## 🏁 Getting Started
+**Lium CLI** empowers you to effortlessly list, launch, and manage high-performance GPU executors directly from your terminal. 
 
 ### 1. Installation
 
