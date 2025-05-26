@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
-from rich.box import ROUNDED
+from rich.box import ROUNDED, MINIMAL
 from rich.prompt import Prompt
 from rich.syntax import Syntax
 from typing import Optional, Dict, List, Any, Tuple
@@ -15,6 +15,11 @@ import hashlib
 import json
 from datetime import datetime, timezone # Updated import
 import requests # Added for HTTPError handling
+import paramiko
+import sys # For stdout/stderr flushing
+import shlex # For parsing ssh command string
+import socket # For socket errors
+from pathlib import Path
 
 from .api import LiumAPIClient
 from .config import (
@@ -22,7 +27,6 @@ from .config import (
     set_config_value, 
     get_config_value, 
     unset_config_value, 
-    load_config,
     get_config_path,
     get_ssh_public_keys
 )
@@ -228,16 +232,13 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
     # Create summary table
     table = Table(
         title=styled(f"GPU Types Summary ({len(executors)} total executors)", "title"),
-        box=ROUNDED,
-        border_style="table.border",
-        header_style="table.header",
-        title_style="title",
-        show_lines=True,
+        box=None, show_header=True, show_lines=False, show_edge=False,
         padding=(0, 1),
-    )
+        header_style="table.header", title_style="title",
+        expand=True)
     
     # Add columns
-    table.add_column("GPU Type", style="executor.gpu", no_wrap=True)
+    table.add_column("Pod Type", style="executor.gpu", no_wrap=True)
     table.add_column("Min $/GPU", style="executor.price", justify="right")
     table.add_column("Max $/GPU", style="executor.price", justify="right")
     table.add_column("Available", style="number", justify="right")
@@ -289,7 +290,7 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
     console.print(table)
     
     # Prompt for GPU type selection
-    console.print("\n" + styled("Enter GPU type to see detailed instances (e.g., '4090', 'H100') or press Enter to exit: ", "key"))
+    console.print("\n" + styled("Enter a GPU type from the list above (i.e. '4090'): ", "key"))
     
     # Create a prompt with the themed console
     selected_type = Prompt.ask("", default="", console=console, show_default=False)
@@ -306,29 +307,37 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
 def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
     """Show detailed information for Pareto optimal executors of a specific GPU type."""
     # Calculate Pareto frontier
-    pareto_results = calculate_pareto_frontier(executors)
+    pareto_results = calculate_pareto_frontier(executors) # This already sorts Pareto optimal first, then by price
     
-    # Filter for Pareto optimal executors
-    pareto_optimal_executors = [executor for executor, is_pareto in pareto_results if is_pareto]
+    # Limit to showing a maximum of 10 entries
+    MAX_ENTRIES_TO_SHOW = 10
+    executors_to_display = pareto_results[:MAX_ENTRIES_TO_SHOW]
+    
+    pareto_optimal_in_displayed = [executor for executor, is_pareto in executors_to_display if is_pareto]
     
     total_for_type = len(executors)
-    shown_count = len(pareto_optimal_executors)
-    
-    title_message = f"Available {gpu_type} Executors (Showing {shown_count}/{total_for_type} Pareto optimal)"
-    
-    # Create detailed table with many columns
+    shown_count = len(executors_to_display)
+    pareto_in_shown_count = len(pareto_optimal_in_displayed)
+
+    if total_for_type <= shown_count: # If we are showing all available (because total is <= MAX_ENTRIES_TO_SHOW)
+        title_message = f"Top {shown_count}/{total_for_type} Executors of type: {gpu_type}"
+    else:
+        title_message = f"Top {shown_count}/{total_for_type} Executors of type: {gpu_type}"
+
     table = Table(
-        title=styled(title_message, "title"),
-        box=ROUNDED,
-        border_style="table.border",
+        # title=styled(title_message, "title"),
+        box=None,
+        show_header=True,
+        show_lines=False,
+        show_edge=False,
+        padding=(0, 1), # Simpler padding (vertical, horizontal)
         header_style="table.header",
         title_style="title",
-        show_lines=True,
-        padding=(0, 1),
+        expand=True
     )
     
     # Add columns - reorganized for better readability, removed Pareto marker and GPU%
-    table.add_column("Name", style="dim", no_wrap=False, min_width=15, max_width=20)
+    table.add_column("Pod", style="dim", no_wrap=False, min_width=15, max_width=20)
     table.add_column("Config", style="executor.gpu", no_wrap=True)
     table.add_column("$/GPU/hr", style="executor.price", justify="right")
     table.add_column("VRAM", style="number", justify="right")
@@ -341,22 +350,21 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
     table.add_column("Net ↓", style="info", justify="right")
     table.add_column("Location", style="executor.location", width=10, no_wrap=True, overflow="ellipsis") # Truncate if needed
     
-    # Add rows for Pareto optimal executors only
-    for idx, executor in enumerate(pareto_optimal_executors):
+    # Add rows - iterate over executors_to_display instead of all pareto_results
+    for idx, (executor, is_pareto) in enumerate(executors_to_display):
         # Extract all metrics
         metrics = extract_metrics(executor)
         gpu_count = executor.get("specs", {}).get("gpu", {}).get("count", 1)
         config = f"{gpu_count}x{gpu_type}"
-        huid = generate_human_id(executor.get("id", ""))
+        # The HUID/Name is generated from executor.get("id")
+        executor_name_huid = generate_human_id(executor.get("id", ""))
         
-        # Location
         location_data = executor.get("location", {})
         country = location_data.get('country', location_data.get('country_code', 'Unknown'))
         
-        # Add row with alternating background
         style = "table.row.odd" if idx % 2 == 0 else "table.row.even"
         table.add_row(
-            huid,
+            executor_name_huid, # This is for the "Pod" column
             config,
             format_metric(metrics['price_per_hour'], 'price_per_hour'),
             format_metric(metrics['gpu_capacity'], 'gpu_capacity'),
@@ -372,40 +380,6 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         )
     
     console.print(table)
-    
-    # Show summary with Pareto statistics
-    total_gpus_in_type = sum(e.get("specs", {}).get("gpu", {}).get("count", 0) for e in executors)
-    avg_price_per_gpu = sum(e.get("price_per_hour", 0) / e.get("specs", {}).get("gpu", {}).get("count", 1) 
-                           for e in executors) / len(executors) if executors else 0
-    
-    summary_content = Text()
-    summary_content.append(f"\n{gpu_type} Summary:\n", style="header")
-    summary_content.append(f"Showing {shown_count} Pareto optimal executors out of {total_for_type} total for this type.\n", style="secondary")
-    summary_content.append("Total GPUs in type: ", style="secondary")
-    summary_content.append(f"{total_gpus_in_type}\n", style="number")
-    summary_content.append("Average $/GPU (all instances): ", style="secondary")
-    summary_content.append(f"${avg_price_per_gpu:.2f}", style="executor.price")
-    
-    summary = Panel(
-        summary_content,
-        title=styled("Summary", "panel.title"),
-        border_style="panel.border",
-        box=ROUNDED,
-        expand=False,
-        padding=(1, 2),
-    )
-    console.print(summary)
-    
-    # Add legend
-    legend = Panel(
-        "VRAM/RAM/Disk in GB | PCIe in MB/s | Mem in GB/s | Net in Mbps",
-        title=styled("Legend", "panel.title"),
-        border_style="panel.border",
-        box=ROUNDED,
-        expand=False,
-        padding=(1, 2),
-    )
-    console.print(legend)
 
 
 @click.group()
@@ -461,9 +435,9 @@ def list_executors(api_key: Optional[str], gpu_type_filter: Optional[str]):
             if selected_gpu in grouped_by_gpu:
                 console.print("\n")  # Add spacing
                 show_gpu_type_details(selected_gpu, grouped_by_gpu[selected_gpu])
-            # This else should not be reached if filter logic is correct
-            # else: 
-            #    console.print(styled(f"GPU type '{selected_gpu}' not found in grouped data.", "error"))
+            # This else case was correctly commented out as it should not be reached if selected_gpu is valid
+            # elif selected_gpu: # If selected_gpu is not None but not in grouped_by_gpu (e.g. invalid manual entry after prompt)
+            #    console.print(styled(f"Details for GPU type '{selected_gpu}' could not be found in grouped data.", "error"))
         
     except Exception as e:
         console.print(styled("Error:", "error") + styled(f" Failed to fetch executors: {str(e)}", "primary"))
@@ -499,33 +473,29 @@ def list_pods(api_key: Optional[str]):
             return
 
         table = Table(
-            title=styled(f"Active Pods ({len(pods)} total)", "title"),
-            box=ROUNDED,
-            border_style="table.border",
+            # title=styled(f"Active Pods ({len(pods)} total)", "title"),
+            box=None,
+            show_header=True,
+            show_lines=False,
+            show_edge=False,
+            padding=(0, 1, 0, 1),
             header_style="table.header",
             title_style="title",
-            show_lines=True,
-            padding=(0, 1),
-            min_width=120 
-        )
+            expand=True)
 
-        table.add_column("Name", style="dim", no_wrap=False, min_width=16, max_width=18)  # HUID from pod.id
-        table.add_column("Label", style="primary", width=15, overflow="ellipsis") # pod.pod_name from API
+        table.add_column("Pod", style="dim", no_wrap=False, min_width=16, max_width=18)  # HUID from pod.id
         table.add_column("Status", style="primary", width=10)
         table.add_column("GPU Config", style="executor.gpu", width=11, no_wrap=True)
-        table.add_column("RAM", style="number", justify="right", width=6)
-        table.add_column("Cost", style="executor.price", justify="right", width=7)
+        table.add_column("RAM", style="number", justify="right", width=6) 
+        table.add_column("$/GPU", style="executor.price", justify="right", width=7) 
         table.add_column("Spent", style="executor.price", justify="right", width=8)
-        table.add_column("Hours", style="secondary", justify="right", width=8) # Shortened header & width
-        table.add_column("SSH Command", style="info", overflow="fold", min_width=25, max_width=35) # Now last
+        table.add_column("Uptime", style="secondary", justify="right", width=8) 
+        table.add_column("SSH Command", style="info", overflow="fold", min_width=25, max_width=40)
 
         for idx, pod in enumerate(pods):
-            instance_name_huid = generate_human_id(pod.get("id", "")) # This is the HUID, for "Name" column
-            pod_label = pod.get("pod_name", "N/A") # This is pod.pod_name from API, for "Label" column
-            # pod_uuid = pod.get("id", "N/A") # We can remove this if UUID column is removed, or keep for clarity if needed
+            instance_name_huid = generate_human_id(pod.get("id", "")) # Name of the pod instance
+            # pod_label = pod.get("pod_name", "N/A") # This was the executor HUID or UUID, no longer displayed here
             
-            # ... (status, gpu, ram, cost, uptime, ssh extraction ...)
-            # Ensure all these variables are correctly defined before add_row
             status_str = pod.get("status", "N/A")
             status_display = styled(status_str, get_status_style(status_str))
             gpu_api_name = pod.get("gpu_name", "N/A")
@@ -535,7 +505,7 @@ def list_pods(api_key: Optional[str]):
             gpu_model_display = extract_gpu_model(gpu_api_name)
             gpu_config_display = f"{gpu_count_val}x {gpu_model_display}" if gpu_count_val > 0 and gpu_api_name != "N/A" else gpu_model_display
             price_per_gpu_hour_display = "N/A"
-            executor_data = pod.get("executor", {})
+            executor_data = pod.get("Pod", {})
             total_price_per_hour = executor_data.get("price_per_hour")
             if total_price_per_hour is not None and gpu_count_val > 0:
                 price_per_gpu = float(total_price_per_hour) / gpu_count_val
@@ -570,7 +540,7 @@ def list_pods(api_key: Optional[str]):
             row_style = "table.row.odd" if idx % 2 == 0 else "table.row.even"
             table.add_row(
                 instance_name_huid, 
-                pod_label, # Changed from pod_uuid
+                # pod_label, # Removed
                 status_display, 
                 gpu_config_display, 
                 ram_gb_display, 
@@ -602,10 +572,7 @@ def config():
 def config_get(key: str):
     value = get_config_value(key)
     if value is not None:
-        if isinstance(value, (dict, list)):
-            console.print(Syntax(json.dumps(value, indent=4), "json", theme=get_theme().name or "default", background_color=SolarizedColors.BASE03 if "dark" in (get_theme().name or "default") else SolarizedColors.BASE3))
-        else:
-            console.print(styled(str(value), "primary"))
+        console.print(styled(value, "primary"))
     else:
         console.print(styled(f"Key '{key}' not found.", "error"))
 
@@ -613,13 +580,8 @@ def config_get(key: str):
 @click.argument("key")
 @click.argument("value")
 def config_set(key: str, value: str):
-    # Attempt to parse value as JSON (for bools, numbers, lists, dicts)
-    try:
-        actual_value: Any = json.loads(value)
-    except json.JSONDecodeError:
-        actual_value = value # Treat as string if not valid JSON
-    set_config_value(key, actual_value)
-    console.print(styled(f"Set '{key}' to: ", "success") + styled(str(actual_value), "primary"))
+    set_config_value(key, value)
+    console.print(styled(f"Set '{key}' to: ", "success") + styled(value, "primary"))
 
 @config.command(name="unset", help="Remove a configuration value.")
 @click.argument("key")
@@ -631,36 +593,31 @@ def config_unset(key: str):
 
 @config.command(name="show", help="Show the entire configuration.")
 def config_show():
-    config_data = load_config()
-    if config_data:
-        # Determine background color based on current theme (monochrome or solarized)
-        # Use style_manager which is already imported and reflects the current theme state
-        current_scheme = style_manager.scheme 
-        
-        if current_scheme == ColorScheme.MONOCHROME_DARK:
-            bg_color = MonochromeColors.BLACK
-            theme_name = "monokai" # A good dark theme for Rich Syntax
-        elif current_scheme == ColorScheme.MONOCHROME_LIGHT:
-            bg_color = MonochromeColors.WHITE
-            theme_name = "default" # Rich default is good for light
-        elif current_scheme == ColorScheme.SOLARIZED_DARK:
-            bg_color = SolarizedColors.BASE03
-            theme_name = "solarized-dark"
-        else: # SOLARIZED_LIGHT
-            bg_color = SolarizedColors.BASE3
-            theme_name = "solarized-light"
+    # Perform a benign read to ensure migration logic in config.py is triggered.
+    # This is a bit of a workaround for not directly calling load_config_parser().
+    _ = get_config_value("api.api_key") # This call will trigger migration if needed.
+    
+    config_file_path = get_config_path()
+    if config_file_path.exists():
+        try:
+            with open(config_file_path, "r") as f:
+                ini_content = f.read()
             
-        syntax = Syntax(
-            json.dumps(config_data, indent=4), 
-            "json", 
-            theme=theme_name, 
-            background_color=bg_color, 
-            line_numbers=False, 
-            word_wrap=True
-        )
-        console.print(syntax)
+            current_scheme_value = style_manager.scheme.value
+            if current_scheme_value == ColorScheme.MONOCHROME_DARK.value:
+                bg_color = MonochromeColors.BLACK; syntax_theme_name = "monokai"
+            elif current_scheme_value == ColorScheme.MONOCHROME_LIGHT.value:
+                bg_color = MonochromeColors.WHITE; syntax_theme_name = "default"
+            elif current_scheme_value == ColorScheme.SOLARIZED_DARK.value:
+                bg_color = SolarizedColors.BASE03; syntax_theme_name = "solarized-dark"
+            else: 
+                bg_color = SolarizedColors.BASE3; syntax_theme_name = "solarized-light"
+            syntax = Syntax(ini_content, "ini", theme=syntax_theme_name, background_color=bg_color, line_numbers=False, word_wrap=True)
+            console.print(syntax)
+        except Exception as e:
+            console.print(styled(f"Error reading config file: {str(e)}", "error"))
     else:
-        console.print(styled("Configuration is empty.", "info"))
+        console.print(styled(f"Configuration file '{config_file_path}' does not exist (or migration failed).", "info"))
 
 @config.command(name="path", help="Show the path to the configuration file.")
 def config_path():
@@ -692,194 +649,187 @@ def select_template_interactively(client: LiumAPIClient, skip_prompts: bool = Fa
     """Fetches templates. If skip_prompts, uses first. Else, asks to use first, then lists all if user says no."""
     try:
         templates = client.get_templates()
-        if not templates:
-            console.print(styled("No templates found.", "warning"))
-            return None
+        if not templates: console.print(styled("No templates found.", "warning")); return None
 
         first_template = templates[0]
         first_template_id = first_template.get("id")
         tpl_name = first_template.get("name", "Unnamed Template")
-        tpl_image = first_template.get("docker_image", "")
+        tpl_image = first_template.get("docker_image", "N/A")
         tpl_tag = first_template.get("docker_image_tag", "latest")
-        default_desc = f"'{tpl_name}' ({tpl_image}:{tpl_tag})"
+        # Full description for default prompt
+        default_desc_full = f"'{tpl_name}' ({tpl_image}:{tpl_tag}, ID: ...{first_template_id[-8:] if first_template_id else 'N/A'})"
+        default_desc_for_confirmation = f"'{tpl_name}' ({tpl_image}:{tpl_tag}) ID: {first_template_id}" # For --yes message
 
-        if skip_prompts: # --yes was passed
+        if skip_prompts:
             if first_template_id:
-                console.print(styled(f"Using default first template: {default_desc} ID: {first_template_id}", "info"))
+                console.print(styled(f"Using default template: {default_desc_for_confirmation}", "info"))
                 return first_template_id
             else:
                 console.print(styled("Error: Default first template has no ID. Cannot proceed with --yes.", "error"))
-                return None # Cannot proceed if first template is invalid and we must skip prompts
-        else: # Interactive mode
-            console.print("\n" + styled(f"Default template is: {default_desc}", "info"))
-            if Prompt.ask(styled("Use this default template?", "key"), default="y", console=console).lower().startswith("y"):
-                if first_template_id:
+                return None
+        else: 
+            console.print("\n" + styled(f"Default template: {default_desc_full}", "info"))
+            if Prompt.ask(styled("Use this template?", "key"), default="y", console=console).lower().startswith("y"):
+                if first_template_id: 
+                    # console.print(styled(f"Selected default template: {default_desc_for_confirmation}", "info")) # Optional: confirm selection
                     return first_template_id
-                else:
-                    console.print(styled("Error: Default first template has no ID. Please select from list.", "error"))
-                    # Fall through to list all templates
+                else: console.print(styled("Error: Default template invalid. Select from list.", "error"))
             
-            # User said no to default, or default was invalid - list all templates
-            console.print(styled("Fetching and displaying all available templates...", "info"))
-            table = Table(title=styled("Available Templates", "title"), box=ROUNDED, border_style="table.border", header_style="table.header", title_style="title", show_lines=True)
+            console.print(styled("Fetching all available templates...", "info"))
+            table = Table(title=styled("Available Templates", "title"), box=None, show_header=True, show_lines=False, show_edge=False, padding=(0, 1), header_style="table.header", title_style="title", expand=True)
             table.add_column("#", style="dim", justify="right")
             table.add_column("Name", style="primary", min_width=20, max_width=30, overflow="ellipsis")
             table.add_column("Docker Image", style="info", min_width=30, max_width=45, overflow="ellipsis")
             table.add_column("Category", style="secondary", width=10)
-            table.add_column("ID (for direct use)", style="muted", width=15, overflow="ellipsis")
-
+            table.add_column("ID", style="muted", width=15, overflow="ellipsis")
             template_map = {}
             for idx, tpl in enumerate(templates, 1):
                 template_map[str(idx)] = tpl.get("id")
                 docker_image_full = f"{tpl.get('docker_image', 'N/A')}:{tpl.get('docker_image_tag', 'latest')}"
-                table.add_row(
-                    str(idx),
-                    tpl.get("name", "N/A"),
-                    docker_image_full,
-                    tpl.get("category", "N/A"),
-                    tpl.get("id", "N/A")[:13] + "..." if tpl.get("id") else "N/A"
-                )
-            
+                table.add_row(str(idx), tpl.get("name", "N/A"), docker_image_full, tpl.get("category", "N/A"), tpl.get("id", "N/A")[:13] + "..." if tpl.get("id") else "N/A")
             console.print(table)
-            console.print(styled("Enter the number of the template to use, or its full ID:", "key"))
+            console.print(styled("Enter # or full ID of template to use:", "key"))
             choice = Prompt.ask("", console=console, show_default=False).strip()
-
-            if choice in template_map: return template_map[choice]
-            elif any(tpl['id'] == choice for tpl in templates): return choice
+            if choice in template_map: 
+                # selected_tpl_name = next((t['name'] for t in templates if t['id'] == template_map[choice]), "Selected Template")
+                # console.print(styled(f"Selected template: '{selected_tpl_name}' (ID: {template_map[choice]})", "info")) # Optional
+                return template_map[choice]
+            elif any(tpl['id'] == choice for tpl in templates): 
+                # selected_tpl_name = next((t['name'] for t in templates if t['id'] == choice), "Selected Template")
+                # console.print(styled(f"Selected template: '{selected_tpl_name}' (ID: {choice})", "info")) # Optional
+                return choice
             else: console.print(styled("Invalid selection.", "error")); return None
+    except requests.exceptions.RequestException as e: console.print(styled(f"API Error fetching templates: {str(e)}", "error")); return None
+    except Exception as e: console.print(styled(f"Error processing templates: {str(e)}", "error")); return None
 
-    except requests.exceptions.RequestException as e: # More specific exception
-        console.print(styled(f"API Error fetching templates: {str(e)}", "error"))
-        return None
-    except Exception as e:
-        console.print(styled(f"Error processing templates: {str(e)}", "error"))
-        return None
-
-@cli.command(name="up", help="Rent pod(s) on executor(s) specified by HUID(s)/UUID(s).")
-@click.argument("huid_or_executor_ids", type=str, nargs=-1) # Accepts multiple space-separated, or one comma-separated
-@click.option("--name-prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names if multiple executors are targeted. If single executor, this is the exact pod name.")
+@cli.command(name="up", help="Rent pod(s) on executor(s) specified by Name (Executor HUID/UUID).")
+@click.argument("executor_names_or_ids", type=str, nargs=-1)
+@click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names if multiple executors are targeted. If single executor, this is the exact pod name.")
 @click.option("--template-id", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
 @click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations and use default first template if --template-id is not set.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def rent_machine(
-    huid_or_executor_ids: Tuple[str, ...], 
-    pod_name_prefix_opt: Optional[str],
+    executor_names_or_ids: Tuple[str, ...], 
     template_id_option: Optional[str], 
     skip_all_prompts: bool,
-    api_key: Optional[str]
+    api_key: Optional[str],
+    pod_name_prefix_opt: Optional[str] 
 ):
-    """Rents pod(s) on executor(s).
+    """Rents pod(s) on specified executor(s).
 
-    HUID_OR_EXECUTOR_IDS: Space-separated or comma-separated list of HUIDs/UUIDs.
-    Example: lium up huid1 huid2,huid3 --name-prefix my-pods --template-id ...
+    EXECUTOR_NAMES_OR_IDS: Space-separated or comma-separated list of executor Names (HUIDs from `lium ls`)
+    or full executor UUIDs.
+    Example: lium up huid1 huid2,huid3 --prefix my-pods --template-id ...
     """
     if not api_key: api_key = get_api_key()
-    if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
+    if not api_key: console.print(styled("Error: No API key found.", "error")); return
     ssh_public_keys = get_ssh_public_keys()
-    if not ssh_public_keys: console.print(styled("Error:", "error") + styled(" No SSH public keys found in config.", "primary")); return
-
+    if not ssh_public_keys: console.print(styled("Error: No SSH public keys found.", "error")); return
     client = LiumAPIClient(api_key)
-    
+
     template_id_to_use = template_id_option
     if not template_id_to_use:
         template_id_to_use = select_template_interactively(client, skip_prompts=skip_all_prompts)
         if not template_id_to_use:
-            if not skip_all_prompts: console.print(styled("Template selection aborted or no valid template chosen. Exiting.", "error"))
-            else: console.print(styled("Default template selection failed. Exiting.", "error"))
-            return
-        elif not skip_all_prompts and not template_id_option: console.print(styled(f"Proceeding with selected template ID: {template_id_to_use}", "info"))
-        elif template_id_option: console.print(styled(f"Using provided template ID: {template_id_to_use}", "info"))
+            return 
+        # If interactive and successful, select_template_interactively doesn't print "Using..."
+        # Only print if it was explicitly provided, or skip_prompts (default) was used.
+        # This is now handled inside select_template_interactively for the --yes case.
+        # For interactive choice, no extra message is needed here.
+    elif template_id_option: # Only if --template-id was directly passed
+        console.print(styled(f"Using provided template: ...{template_id_to_use[-12:]}", "info"))
 
-    # Process the HUID_OR_EXECUTOR_IDS tuple
     raw_identifiers = []
-    for item in huid_or_executor_ids:
-        raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
+    for item in executor_names_or_ids: raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
     target_identifiers = [ident for ident in raw_identifiers if ident]
-    if not target_identifiers:
-        console.print(styled("Error: No HUIDs or Executor IDs provided.", "error"))
-        console.print(styled("Usage: lium up <HUID1,HUID2... | HUID1 HUID2 ...> [--name-prefix <PREFIX>] --template-id <ID>", "info"))
-        return
+    if not target_identifiers: console.print(styled("Error: No executor Names (HUIDs) or UUIDs provided.", "error")); return
 
     executors_to_process: List[Dict[str, Any]] = []
-    all_executors_data = None 
+    all_executors_data = None # Fetched on demand
+    failed_resolutions = []
 
     for i, identifier in enumerate(target_identifiers):
         executor_id_to_rent = None
-        default_name_base = identifier
+        # pod_name_for_api will be the HUID of the executor machine
+        pod_name_for_api = identifier # Placeholder, will be replaced by HUID or kept as UUID if HUID fails
+        
         is_likely_huid = bool(re.match(r"^[a-z]+-[a-z]+-[0-9a-f]{2}$", identifier.lower()))
+
+        if all_executors_data is None: # Fetch only once, if needed
+            try: all_executors_data = client.get_executors()
+            except Exception as e: console.print(styled(f"Critical Error: Could not fetch executor list: {str(e)}", "error")); return
+
+        found_executor_for_id = False
         if is_likely_huid:
-            if all_executors_data is None: 
-                try: all_executors_data = client.get_executors()
-                except Exception as e: console.print(styled(f"Error fetching executors: {str(e)}", "error")); return
-            found_executor = False
             for executor in all_executors_data:
                 ex_id = executor.get("id", "")
                 current_huid = generate_human_id(ex_id)
                 if current_huid == identifier.lower():
-                    executor_id_to_rent = ex_id; default_name_base = current_huid; found_executor = True
-                    console.print(styled(f"  -> Resolved HUID '{identifier}' to Executor ID: {executor_id_to_rent}", "info"))
-                    break
-            if not found_executor: console.print(styled(f"Error: Could not find executor for HUID '{identifier}'. Skipping.", "warning")); continue
-        else: 
-            executor_id_to_rent = identifier
-            default_name_base = identifier.split('-')[0]
-        if not executor_id_to_rent: console.print(styled(f"Error: Invalid HUID or Executor ID '{identifier}'. Skipping.", "warning")); continue
+                    executor_id_to_rent = ex_id
+                    pod_name_for_api = current_huid # Use actual HUID for API
+                    found_executor_for_id = True; break
+        else: # Assume it's a UUID, try to find it and its HUID
+            for executor in all_executors_data:
+                ex_id = executor.get("id", "")
+                if ex_id == identifier:
+                    executor_id_to_rent = ex_id
+                    pod_name_for_api = generate_human_id(ex_id) # Get HUID for API name
+                    found_executor_for_id = True; break
         
-        pod_name_to_use = pod_name_prefix_opt
+        if not found_executor_for_id:
+            failed_resolutions.append(identifier)
+            continue
+        
+        # Final pod name for this specific instance (if multiple from same prefix)
+        final_instance_name = pod_name_prefix_opt
         if len(target_identifiers) > 1:
-            pod_name_to_use = f"{pod_name_prefix_opt or default_name_base}-{i+1}"
-        elif pod_name_prefix_opt: # Single target, and prefix_opt is given (use as exact name)
-             pod_name_to_use = pod_name_prefix_opt
-        elif not pod_name_to_use: # Single target, no prefix_opt given
-             pod_name_to_use = default_name_base
+            # Use the API pod name (executor HUID/UUID) as base for indexed name if no prefix
+            base_for_indexing = pod_name_prefix_opt or pod_name_for_api 
+            final_instance_name = f"{base_for_indexing}-{i+1}"
+        elif pod_name_prefix_opt: # Single target, and prefix_opt is given
+             final_instance_name = pod_name_prefix_opt
+        else: # Single target, no prefix_opt given, use the executor HUID/UUID for the instance name
+             final_instance_name = pod_name_for_api
 
-        executors_to_process.append({"executor_id": executor_id_to_rent, "pod_name": pod_name_to_use, "original_ref": identifier})
-
-    if not executors_to_process:
-        console.print(styled("No valid executors found to process after HUID resolution.", "info"))
-        return
+        executors_to_process.append({
+            "executor_id": executor_id_to_rent, 
+            "pod_name_for_api": final_instance_name, # This is the unique name for THIS pod instance
+            "original_ref": identifier
+        })
+    if failed_resolutions: console.print(styled(f"Warning: Unresolved: {', '.join(failed_resolutions)}", "warning"))
+    if not executors_to_process: console.print(styled("No valid executors to process.", "info")); return
     
-    console.print("\n" + styled("Will attempt to rent the following pod(s):", "header"))
+    console.print("\n" + styled("Executors to be acquired:", "header"))
     for proc_info in executors_to_process:
-        console.print(f"  - Pod: '{proc_info['pod_name']}', ID: '{proc_info['executor_id']}'), Template: '{template_id_to_use}'")
-    console.print("")
+        console.print(f"  - {proc_info['original_ref']}") # Simplified: only original ref
+    # Removed: console.print(styled(f"(Using Template ID: ...)", "dim"))
+    console.print("") # Keep one spacer for readability before prompt
 
-    if not skip_all_prompts and len(executors_to_process) > 0: # This part already exists
-        if not Prompt.ask(styled(f"Proceed with renting {len(executors_to_process)} pod(s)?", "warning"), default="n", console=console).lower().startswith("y"):
-            console.print(styled("Operation cancelled by user.", "info"))
-            return
+    if not skip_all_prompts:
+        if not Prompt.ask(styled(f"Continue? ({len(executors_to_process)} pod(s))", "key"), default="n", console=console).lower().startswith("y"):
+            console.print(styled("Operation cancelled.", "info")); return
 
-    success_count = 0
-    failure_count = 0
-
+    success_count = 0; failure_count = 0; failed_details = []
     for proc_info in executors_to_process:
-        executor_id, pod_name = proc_info['executor_id'], proc_info['pod_name']
-        console.print(styled(f"Attempting to rent pod '{pod_name}' on executor '{executor_id}'...", "info"))
+        executor_id, pod_name_for_api, original_ref = proc_info['executor_id'], proc_info['pod_name_for_api'], proc_info['original_ref']
         try:
-            client.rent_pod(
-                executor_id=executor_id,
-                pod_name=pod_name,
-                template_id=template_id_to_use,
-                user_public_keys=ssh_public_keys
-            )
+            client.rent_pod(executor_id=executor_id, pod_name=pod_name_for_api, template_id=template_id_to_use, user_public_keys=ssh_public_keys)
             success_count += 1
         except requests.exceptions.HTTPError as e:
-            error_message = f"API Error: {e.response.status_code} - {e.response.text}"
-            try:
-                error_details = e.response.json()
-                if "detail" in error_details: error_message += f" Detail: {error_details['detail']}"
-            except json.JSONDecodeError: pass
-            console.print(styled(f"Error renting pod '{pod_name}': {error_message}", "error"))
-            failure_count += 1
-        except Exception as e:
-            console.print(styled(f"An unexpected error occurred for pod '{pod_name}': {str(e)}", "error"))
-            failure_count += 1
-
-    console.print(styled(f"Successfully rented {success_count} pod(s).", "success" if success_count > 0 else "info"))
-    if failure_count > 0:
-        console.print(styled(f"Failed to rent {failure_count} pod(s).", "error"))
-    if success_count > 0:
-        console.print(styled("Use 'lium ps' to check pod status.", "info"))
+            error_message = f"API Error {e.response.status_code}"; failure_count += 1
+            try: error_details = e.response.json(); detail_msg = error_details.get('detail'); error_message += f" - {detail_msg if isinstance(detail_msg, str) else json.dumps(detail_msg)}" 
+            except json.JSONDecodeError: error_message += f" - {e.response.text[:70]}"
+            failed_details.append(f"'{original_ref}' (as '{pod_name_for_api}'): {error_message}")
+        except Exception as e: 
+            failed_details.append(f"'{original_ref}' (as '{pod_name_for_api}'): Unexpected error: {str(e)[:70]}"); failure_count += 1
+  
+    if success_count > 0: console.print(styled(f"Successfully acquired {success_count} pod(s).", "success"))
+    if failure_count > 0: 
+        console.print(styled(f"Failed to acquire {failure_count} pod(s):", "error"))
+        for detail in failed_details:
+            console.print(styled(f"  - {detail}", "error"))
+    if success_count > 0: console.print(styled("Use 'lium ps' to check status.", "info"))
+    elif not executors_to_process and not failed_resolutions : console.print(styled("No action taken.", "info"))
 
 
 @cli.command(name="down", help="Unrent/terminate one or more pods. Use Name (HUID) or --all.")
@@ -894,76 +844,208 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
     Example: lium down name1 name2,name3
     """
     if not api_key: api_key = get_api_key()
-    if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
-
-    # Process pod_names tuple to get a flat list of target HUIDs
+    if not api_key: console.print(styled("Error: No API key found.", "error")); return
     target_huids_flat = []
     if pod_names:
-        for item in pod_names:
-            target_huids_flat.extend(name.strip().lower() for name in item.split(',') if name.strip())
-
-    if not target_huids_flat and not terminate_all:
-        console.print(styled("Error: You must specify pod Name(s) or use the --all flag.", "error"))
-        console.print(styled("Usage: lium down <NAME1,NAME2...> OR lium down <NAME1> <NAME2> ... OR lium down --all", "info"))
-        return
+        for item in pod_names: target_huids_flat.extend(name.strip().lower() for name in item.split(',') if name.strip())
+    if not target_huids_flat and not terminate_all: console.print(styled("Error: Must specify pod Name(s) or --all.", "error")); return
 
     client = LiumAPIClient(api_key)
-    pods_to_terminate: List[Dict[str, Any]] = []
-
+    pods_to_terminate_info: List[Dict[str, Any]] = [] # Stores {huid, pod_id, executor_id, original_ref (which is huid)}
+    
     try:
         active_pods = client.get_pods()
-        if not active_pods:
-            console.print(styled("No active pods found to terminate.", "info")); return
+        if not active_pods: console.print(styled("No active pods found.", "info")); return
 
         if terminate_all:
             for pod in active_pods:
                 pod_id = pod.get("id"); huid = generate_human_id(pod_id)
-                executor_id = pod.get("executor", {}).get("id") or pod_id
-                pods_to_terminate.append({"huid": huid, "pod_id": pod_id, "executor_id": executor_id, "pod_label": pod.get("pod_name", "N/A")})
-            if not pods_to_terminate: console.print(styled("No active pods found with --all.", "info")); return
-        else: # Specific pod names provided from target_huids_flat
+                executor_id = pod.get("Pod", {}).get("id") or pod_id 
+                pods_to_terminate_info.append({"huid": huid, "pod_id": pod_id, "executor_id": executor_id, "original_ref": huid})
+            if not pods_to_terminate_info: console.print(styled("No active pods to terminate with --all.", "info")); return
+        else: 
             target_huids_set = set(target_huids_flat)
-            found_huids_set = set()
-            for pod in active_pods:
-                pod_id = pod.get("id"); huid = generate_human_id(pod_id)
-                if huid.lower() in target_huids_set:
-                    executor_id = pod.get("executor", {}).get("id") or pod_id
-                    pods_to_terminate.append({"huid": huid, "pod_id": pod_id, "executor_id": executor_id, "pod_label": pod.get("pod_name", "N/A")})
-                    found_huids_set.add(huid.lower())
+            found_pods_map = {generate_human_id(p.get("id")): p for p in active_pods if p.get("id")}
+            unresolved_huids = list(target_huids_set)
             
-            missing_huids = target_huids_set - found_huids_set
-            if missing_huids: console.print(styled(f"Warning: Could not find active pods for Names (HUIDs): {', '.join(missing_huids)}", "warning"))
-            if not pods_to_terminate: console.print(styled("No specified pods found to terminate.", "info")); return
+            for target_huid in target_huids_set:
+                pod_data = found_pods_map.get(target_huid)
+                if pod_data:
+                    pod_id = pod_data.get("id")
+                    executor_id = pod_data.get("Pod", {}).get("id") or pod_id
+                    pods_to_terminate_info.append({"huid": target_huid, "pod_id": pod_id, "executor_id": executor_id, "original_ref": target_huid})
+                    if target_huid in unresolved_huids: unresolved_huids.remove(target_huid)
+            
+            if unresolved_huids:
+                console.print(styled(f"Warning: Unresolved/not found: {', '.join(unresolved_huids)}. These will be skipped.", "warning"))
+            if not pods_to_terminate_info: console.print(styled("No specified pods found to terminate.", "info")); return
 
     except Exception as e: console.print(styled(f"Error fetching active pods: {str(e)}", "error")); return
 
-    if not pods_to_terminate: console.print(styled("No pods selected for termination.", "info")); return
+    if not pods_to_terminate_info: console.print(styled("No pods selected for termination.", "info")); return
 
-    console.print(styled("The following pods will be terminated:", "header"))
-    for pod_info in pods_to_terminate:
-        console.print(f"  - Name: {pod_info['huid']}, Label: {pod_info['pod_label']}, ID: {pod_info['pod_id']}")
+    console.print("\n" + styled("Executors to release", "header"))
+    for pod_info in pods_to_terminate_info:
+        console.print(f"  - {pod_info['original_ref']}") # Only the original HUID reference
     console.print("")
+
     if not skip_confirmation:
-        if not Prompt.ask(styled(f"Are you sure you want to terminate {len(pods_to_terminate)} pod(s)?", "warning"), default="n", console=console).lower().startswith("y"):
-            console.print(styled("Operation cancelled by user.", "info")); return
-    success_count = 0; failure_count = 0
-    for pod_info in pods_to_terminate:
-        huid, pod_id, executor_id = pod_info['huid'], pod_info['pod_id'], pod_info['executor_id']
-        console.print(styled(f"Attempting to terminate pod '{huid}' (ID: {pod_id}) on executor '{executor_id}'...", "info"))
+        if not Prompt.ask(styled(f"Continue? ({len(pods_to_terminate_info)} pod(s))", "key"), default="n", console=console).lower().startswith("y"):
+            console.print(styled("Operation cancelled.", "info")); return
+    
+    success_count = 0; failure_count = 0; failed_details_list = []
+    for pod_info in pods_to_terminate_info:
+        huid, executor_id, original_ref = pod_info['huid'], pod_info['executor_id'], pod_info['original_ref']
+        # Removed: console.print(styled(f"Attempting to terminate pod '{huid}' ...", "info"))
         try:
-            response_data = client.unrent_pod(executor_id=executor_id)
-            console.print(styled(f"Pod '{huid}' termination request sent successfully.", "success")); success_count += 1
-            if response_data: pass # Minimal response for batch
+            client.unrent_pod(executor_id=executor_id) # Assuming this targets the correct pod via executor_id based on previous behavior
+            success_count += 1
         except requests.exceptions.HTTPError as e:
-            error_message = f"API Error: {e.response.status_code} - {e.response.text}"; failure_count += 1
-            try: error_details = e.response.json(); error_message += f" Detail: {error_details.get('detail', '')}"
-            except json.JSONDecodeError: pass
-            console.print(styled(f"Error terminating pod '{huid}': {error_message}", "error"))
-        except Exception as e: console.print(styled(f"Unexpected error for pod '{huid}': {str(e)}", "error")); failure_count += 1
-    console.print("\n" + styled("Termination summary:", "header"))
-    console.print(styled(f"Successfully requested termination for {success_count} pod(s).", "success" if success_count > 0 else "info"))
-    if failure_count > 0: console.print(styled(f"Failed for {failure_count} pod(s).", "error"))
-    if success_count > 0 or failure_count > 0 : console.print(styled("Use 'lium ps' to verify.", "info"))
+            error_message = f"API Error {e.response.status_code}"; failure_count += 1
+            try: error_details = e.response.json(); detail_msg = error_details.get('detail'); error_message += f" - {detail_msg if isinstance(detail_msg, str) else json.dumps(detail_msg)}" 
+            except json.JSONDecodeError: error_message += f" - {e.response.text[:70]}"
+            failed_details_list.append(f"'{original_ref}': {error_message}")
+        except Exception as e: 
+            failed_details_list.append(f"'{original_ref}': Unexpected error: {str(e)[:70]}"); failure_count += 1
+
+    if success_count > 0: console.print(styled(f"Successfully requested release for {success_count} pod(s).", "success"))
+    if failure_count > 0: 
+        console.print(styled(f"Failed to request release for {failure_count} pod(s):", "error"))
+        for detail in failed_details_list:
+            console.print(styled(f"  - {detail}", "error"))
+    if success_count > 0 or failure_count > 0 : console.print(styled("Use 'lium ps' to verify status.", "info"))
+    elif not pods_to_terminate_info and not unresolved_huids : console.print(styled("No action taken.", "info")) # Check unresolved_huids
+
+
+@cli.command(name="exec", help="Execute a command on a running pod via SSH.")
+@click.argument("pod_name_huid", type=str)
+@click.argument("command_to_run", type=str)
+@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+def execute_command_on_pod(pod_name_huid: str, command_to_run: str, api_key: Optional[str]):
+    """Executes COMMAND_TO_RUN on the pod identified by POD_NAME_HUID."""
+    if not api_key: api_key = get_api_key()
+    if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
+
+    ssh_key_path_str = get_config_value("ssh.key_path")
+    if not ssh_key_path_str:
+        console.print(styled("Error: SSH key path not configured. Use 'lium config set ssh.key_path /path/to/your/private_key'", "error"))
+        return
+    
+    # Note: paramiko needs the *private* key. get_ssh_public_keys() was for API.
+    # We should guide user to set private key path for `lium exec`.
+    # For now, assume ssh.key_path in config IS the private key path for this command.
+    # This might require a new config entry like ssh.private_key_path if ssh.key_path is strictly public.
+    # Let's assume for now ssh.key_path can be the private key for `exec`.
+    private_key_path = Path(ssh_key_path_str).expanduser()
+    if not private_key_path.exists():
+        console.print(styled(f"Error: SSH private key not found at '{private_key_path}'", "error"))
+        console.print(styled("Please ensure 'ssh.key_path' in your Lium config points to your private SSH key for 'lium exec'.", "info"))
+        return
+
+    client = LiumAPIClient(api_key)
+    target_pod_info = None
+
+    try:
+        active_pods = client.get_pods()
+        if not active_pods: console.print(styled("No active pods found.", "info")); return
+
+        for pod in active_pods:
+            current_pod_id = pod.get("id")
+            if not current_pod_id: continue
+            current_huid = generate_human_id(current_pod_id)
+            if current_huid == pod_name_huid.lower():
+                target_pod_info = pod
+                break
+        
+        if not target_pod_info:
+            console.print(styled(f"Error: Pod with Name (HUID) '{pod_name_huid}' not found among active pods.", "error"))
+            return
+
+    except Exception as e: console.print(styled(f"Error fetching active pods: {str(e)}", "error")); return
+
+    ssh_connect_cmd_str = target_pod_info.get("ssh_connect_cmd")
+    if not ssh_connect_cmd_str:
+        console.print(styled(f"Error: Pod '{pod_name_huid}' has no SSH connection command available.", "error")); return
+
+    # Parse SSH command (e.g., "ssh root@IP -p PORT")
+    try:
+        parts = shlex.split(ssh_connect_cmd_str)
+        # Expected format: ssh user@host -p port
+        user_host = parts[1]
+        user, host = user_host.split('@')
+        port = None
+        if "-p" in parts:
+            port_index = parts.index("-p") + 1
+            if port_index < len(parts):
+                port = int(parts[port_index])
+        if port is None: port = 22 # Default SSH port
+    except Exception as e:
+        console.print(styled(f"Error parsing SSH command '{ssh_connect_cmd_str}': {str(e)}", "error"))
+        return
+
+    console.print(styled(f"Connecting to '{pod_name_huid}' ({host}:{port} as {user}) to run: {command_to_run}", "info"))
+
+    ssh_client = None
+    try:
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) # Automatically add host key
+        
+        # Attempt to load various key types, fail gracefully
+        loaded_key = None
+        key_types_to_try = [paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey, paramiko.DSSKey]
+        last_key_error = None
+        for key_type in key_types_to_try:
+            try:
+                loaded_key = key_type.from_private_key_file(str(private_key_path))
+                break
+            except paramiko.ssh_exception.PasswordRequiredException:
+                console.print(styled(f"Error: SSH key '{private_key_path}' is encrypted and requires a passphrase. Passphrase input is not supported yet.", "error"))
+                return
+            except paramiko.ssh_exception.SSHException as e:
+                last_key_error = e # Store last error to show if all fail
+                continue
+        
+        if not loaded_key:
+            console.print(styled(f"Error: Could not load SSH private key '{private_key_path}'. Ensure it is a valid, unencrypted private key. Last error: {last_key_error}", "error"))
+            return
+
+        ssh_client.connect(hostname=host, port=port, username=user, pkey=loaded_key, timeout=10)
+        
+        stdin, stdout, stderr = ssh_client.exec_command(command_to_run, get_pty=True)
+        
+        # Stream output
+        while not stdout.channel.exit_status_ready():
+            if stdout.channel.recv_ready():
+                data = stdout.channel.recv(1024)
+                sys.stdout.write(data.decode(errors='replace'))
+                sys.stdout.flush()
+            if stderr.channel.recv_ready():
+                data = stderr.channel.recv(1024)
+                sys.stderr.write(data.decode(errors='replace'))
+                sys.stderr.flush()
+        
+        # Get remaining output
+        sys.stdout.write(stdout.read().decode(errors='replace'))
+        sys.stderr.write(stderr.read().decode(errors='replace'))
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status == 0:
+            console.print(styled(f"\nCommand completed on '{pod_name_huid}'. Exit status: {exit_status}", "success"))
+        else:
+            console.print(styled(f"\nCommand failed on '{pod_name_huid}'. Exit status: {exit_status}", "error"))
+        
+    except socket.timeout:
+        console.print(styled(f"Error: Connection to '{host}:{port}' timed out.", "error"))
+    except paramiko.ssh_exception.AuthenticationException:
+        console.print(styled(f"Error: Authentication failed for {user}@{host}:{port}. Check your SSH key and permissions.", "error"))
+    except paramiko.ssh_exception.SSHException as e:
+        console.print(styled(f"Error: SSH connection error to {host}:{port}: {str(e)}", "error"))
+    except Exception as e:
+        console.print(styled(f"An unexpected error occurred during SSH execution: {str(e)}", "error"))
+    finally:
+        if ssh_client: ssh_client.close()
 
 
 # Add the config command group to the main cli group
