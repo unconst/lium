@@ -17,6 +17,8 @@ lium config set api_key <YOUR_API_KEY_HERE>
 lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
 lium config show
 ```
+`~/.lium/config.ini`
+![Lium config show](assets/liumconfigshow.png)
 
 ## 3. Use
 

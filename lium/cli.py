@@ -30,7 +30,8 @@ from .config import (
     get_config_value, 
     unset_config_value, 
     get_config_path,
-    get_ssh_public_keys
+    get_ssh_public_keys,
+    load_config_parser
 )
 from .styles import get_theme, styled, SolarizedColors, MonochromeColors, style_manager, ColorScheme
 
@@ -619,31 +620,51 @@ def config_unset(key: str):
 
 @config.command(name="show", help="Show the entire configuration.")
 def config_show():
-    # Perform a benign read to ensure migration logic in config.py is triggered.
-    # This is a bit of a workaround for not directly calling load_config_parser().
-    _ = get_config_value("api.api_key") # This call will trigger migration if needed.
+    config = load_config_parser() # This loads the INI and triggers migration
     
-    config_file_path = get_config_path()
-    if config_file_path.exists():
-        try:
-            with open(config_file_path, "r") as f:
-                ini_content = f.read()
-            
-            current_scheme_value = style_manager.scheme.value
-            if current_scheme_value == ColorScheme.MONOCHROME_DARK.value:
-                bg_color = MonochromeColors.BLACK; syntax_theme_name = "monokai"
-            elif current_scheme_value == ColorScheme.MONOCHROME_LIGHT.value:
-                bg_color = MonochromeColors.WHITE; syntax_theme_name = "default"
-            elif current_scheme_value == ColorScheme.SOLARIZED_DARK.value:
-                bg_color = SolarizedColors.BASE03; syntax_theme_name = "solarized-dark"
-            else: 
-                bg_color = SolarizedColors.BASE3; syntax_theme_name = "solarized-light"
-            syntax = Syntax(ini_content, "ini", theme=syntax_theme_name, background_color=bg_color, line_numbers=False, word_wrap=True)
-            console.print(syntax)
-        except Exception as e:
-            console.print(styled(f"Error reading config file: {str(e)}", "error"))
+    if not config.sections() and not config.defaults():
+        console.print(styled(f"Configuration file '{get_config_path()}' is empty or does not exist.", "info"))
+        return
+
+    # Use a Text object for more control over layout and styling
+    output_text = Text()
+    first_section = True
+
+    # Print default section items if any, not under a [DEFAULT] header unless explicitly wanted
+    # For now, let's assume default items are rare or implicitly handled by sections.
+    # If we want to show DEFAULT section explicitly:
+    # if config.defaults():
+    #     if not first_section: output_text.append("\n")
+    #     output_text.append(f"[DEFAULT]\n", style="title") # or a different style for DEFAULT
+    #     for key, value in config.defaults().items():
+    #         output_text.append(f"  {key} = ", style="key")
+    #         output_text.append(f"{value}\n", style="value")
+    #     first_section = False
+
+    for section_name in config.sections():
+        if not first_section:
+            output_text.append("\n") # Add a blank line between sections
+        output_text.append(f"[{section_name}]\n", style="title") # Style for section header
+        
+        items = config.items(section_name)
+        if not items:
+            output_text.append(styled("  (empty section)\n", "dim"))
+        else:
+            for key, value in items:
+                output_text.append(f"  {key} = ", style="key") # Style for key
+                output_text.append(f"{value}\n", style="value") # Style for value
+        first_section = False
+    
+    # If only DEFAULT items exist and we chose not to print [DEFAULT] explicitly
+    if first_section and config.defaults(): 
+        for key, value in config.defaults().items():
+            output_text.append(f"{key} = ", style="key") # Print at top level without section
+            output_text.append(f"{value}\n", style="value")
+
+    if output_text.plain:
+        console.print(output_text)
     else:
-        console.print(styled(f"Configuration file '{config_file_path}' does not exist (or migration failed).", "info"))
+         console.print(styled(f"Configuration file '{get_config_path()}' appears to be empty (after parsing).", "info"))
 
 @config.command(name="path", help="Show the path to the configuration file.")
 def config_path():
