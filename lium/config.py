@@ -15,7 +15,7 @@ DEFAULT_CONFIG_STRUCTURE = {
     "api_key": None,
     "ssh": {
         "key_path": None,
-        "user": None # Example of a future nested key
+        "user": "root" # Example of a future nested key
     },
 }
 
