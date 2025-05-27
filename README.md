@@ -1,37 +1,24 @@
 # 𓋼 Lium 
 
-List, launch, and manage high-performance GPU executors from your terminal from [celium](https://celiumcompute.ai).
+Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 
-### 1. Installation
-
+### 1. Install
 Make sure you have uv and Python 3.10+ installed.
-
 ```bash
-git clone git@github.com:unconst/lium.git
-cd lium
-uv venv 
-source .venv/bin/activate
+git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
-### 2. Get Your API Key
-
-You'll need an API key from [celium](https://celiumcompute.ai).. 
-
-1.  Sign up or log in to your CeliumCompute account.
-2.  Navigate to your API key settings (usually in your account or profile section).
-3.  Generate or copy your API key.
-4.  Fund your account with TAO or Visa on Celium.
-
-### 3. Configure Lium CLI
+### 2. Configure
+1. Generate your api key [here](https://celiumcompute.ai/api-keys)
+2. Add funds to your account [here](https://celiumcompute.ai/billing)
 ```bash
-# Set my API key and ssh key. Shows the current config. 
-lium config set api_key YOUR_API_KEY_HERE
-lium config set ssh.key_path ~/.ssh/id_rsa
+lium config set api_key <YOUR_API_KEY_HERE> 
+lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
 lium config show
 ```
 
-## 4. Usage
+## 4. Use
 
 **1. Lium ls**
 ```bash
@@ -75,7 +62,7 @@ lium down --all -y
 ```
 ![lium down](assets/liumdown.png)
 
-## 📜 License
+## License
 
 2025 Yuma Rao
 
