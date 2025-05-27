@@ -32,7 +32,6 @@ lium config show
 
 ---
 `lium ls` 
-List available pods
 ```bash
 # List all available H100s for rental
 lium ls H100
