@@ -1,25 +1,18 @@
 # Lium CLI 🚀
 
-CLI for  [CeliumCompute.ai](https://celiumcompute.ai).
-
----
-
-**Lium CLI** empowers you to effortlessly list, launch, and manage high-performance GPU executors directly from your terminal. 
+List, launch, and manage high-performance GPU executors from your terminal. [CeliumCompute.ai](https://celiumcompute.ai).
 
 ### 1. Installation
 
-Make sure you have Python 3.10+ installed.
+Make sure you have uv and Python 3.10+ installed.
 
 ```bash
-# Recommended: Install with uv (super fast Python package installer)
-# If you don't have uv: pip install uv
-uv pip install lium
-
-# Or, using pip directly:
-pip install lium
+git clone git@github.com:unconst/lium.git
+cd lium
+uv venv 
+source .venv/bin/activate
+uv pip install -e .
 ```
-
-(For development, clone this repository and run `uv pip install -e .` in the project directory.)
 
 ### 2. Get Your API Key
 
@@ -28,104 +21,66 @@ You'll need an API key from [CeliumCompute.ai](https://celiumcompute.ai).
 1.  Sign up or log in to your CeliumCompute account.
 2.  Navigate to your API key settings (usually in your account or profile section).
 3.  Generate or copy your API key.
+4.  Fund your account with TAO or Visa on Celium.
 
 ### 3. Configure Lium CLI
 
-Set your API key (this is required):
+Set your API key and path to your SSH key. This key will be automatically added to new pods you create, allowing you to SSH in.
 ```bash
 lium config set api_key YOUR_API_KEY_HERE
-```
-
-Set the path to your **public** SSH key. This key will be automatically added to new pods you create, allowing you to SSH in.
-```bash
-lium config set ssh.key_path ~/.ssh/your_public_key.pub
-```
-(Replace `~/.ssh/your_public_key.pub` with the actual path to your public SSH key.)
-
-To see your current configuration:
-```bash
+lium config set ssh.key_path ~/.ssh/id_rsa
 lium config show
 ```
 
-To see where the config file is stored:
+## 4. Usage
+
+**1. Lium ls**
 ```bash
-lium config path
+# List all available H100s for rental
+lium ls H100
 ```
+![Lium ls H100](assets/liumls.png)
 
-## 🚀 Usage Examples
-
-**1. List available GPU executor types:**
-
+**2. Lium up**
+Acquries a pod with the default template image.
 ```bash
-lium ls
+# Rent pod with name "golden-pixel-2f"
+lium up golden-pixel-2f
+
+# Rent multiple pods
+lium up golden-pixel-2f, calm-jaguar-f6`
+
 ```
-This will show a summary table. Enter a GPU type (e.g., `H100`) to see detailed specs for available executors of that type, sorted by Pareto optimality (best bang for your buck across multiple specs!).
+> NOTE: to set the image you want to load onto your pod use `lium config set template.default_id`
 
-**2. Launch a new pod:**
-
+**3. Lium ps**
+Show actively rented pods.
 ```bash
-# Launch a pod on an executor (identified by its HUID from 'lium ls')
-# This will prompt you to select a template if --template-id is not given
-lium up swift-hawk-a7 my-first-pod
-
-# Launch using a specific template and the default first template with -y (yes to all prompts)
-lium up brave-lion-3c my-fast-pod --template-id xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-lium up clever-fox-b2 --yes # Uses default name (HUID) and first template
-
-# Launch multiple pods with a name prefix, using the default template automatically
-lium up cosmic-eagle-1a,digital-viper-2b my-batch-pods --yes 
-```
-
-**3. List your active pods:**
-
-```bash
+# Show all actively rented pods and their status
 lium ps
 ```
-Output includes a human-readable "Name" (HUID), the label you gave it, status, GPU config, cost, uptime, and SSH command.
+![Lium ps](assets/liumps.png)
 
-**4. SSH into a pod:**
-
-Copy the SSH command from `lium ps` output and paste it into your terminal.
-
-**5. Terminate pods:**
-
+**4. Lium Exec**
+Executes a command on your running pod.
 ```bash
-# Terminate a single pod by its Name (HUID from 'lium ps')
-lium down swift-hawk-a7
+# Get the python version on a pod:
+lium exec cosmic-raven-39 "python --version"
+```
 
-# Terminate multiple pods (space or comma-separated Names/HUIDs)
-lium down brave-lion-3c clever-fox-b2,cosmic-eagle-1a
+**5. Lium down**
+Releases the acquired Pod.
+```bash
+# Release your rental on a pod golden-pixel-2f
+lium down golden-pixel-2f
 
-# Terminate all your active pods (will ask for confirmation)
-lium down --all
-
-# Terminate all without confirmation
+# Release all rentals without confirmation
 lium down --all -y
 ```
-
-**6. Change CLI theme:**
-
-```bash
-lium theme solarized-light
-lium theme mono # Back to default dark monochrome
-```
-
-## 🛠️ Configuration Keys
-
-*   `api_key` (string, required): Your CeliumCompute.ai API key.
-*   `ssh.key_path` (string, required): Absolute path to your *public* SSH key file (e.g., `~/.ssh/id_ed25519.pub`). One key per line if the file contains multiple.
-*   `user.default_region` (string, optional): Future use for setting a default deployment region.
-
-Use `lium config set <key> <value>` to manage these. For nested keys, use dot notation (e.g., `lium config set ssh.key_path ~/.ssh/another_key.pub`).
-
-## 🤝 Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
 ## 📜 License
 
-[Specify Your License Here - e.g., MIT License]
+2025 Yuma Rao
 
----
-
-Happy Computing with Lium! 🎉
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
