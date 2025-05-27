@@ -28,14 +28,14 @@ lium config show
 
 ## 3. Use
 
-**1. Lium ls**
+**3.1. lium ls**
 ```bash
 # List all available H100s for rental
 lium ls H100
 ```
 ![Lium ls H100](assets/liumls.png)
 
-**2. Lium up**
+**3.2. lium up**
 ```bash
 # Rent pod with name "golden-pixel-2f"
 lium up noble-matrix-a3
@@ -45,28 +45,28 @@ lium up golden-pixel-2f, calm-jaguar-f6`
 ```
 ![Lium up](assets/liumuppod.png)
 
-**3. Lium ps**
+**3.3. lium ps**
 ```bash
 # Shows all actively rented pods and their status
 lium ps
 ```
 ![Lium ps](assets/liumps.png)
 
-**4. Lium Exec**
+**3.4. lium exec**
 ```bash
 # Executes python --version command on cosmic-raven-39
 lium exec cosmic-raven-39 "python --version"
 ```
 ![lium exec](assets/liumexec.png)
 
-**5. Lium SSH**
+**3.5. lium ssh**
 ```bash
 # Opens an ssh connection into laser-cipher-a9
 lium ssh laser-cipher-a9
 ```
 ![lium ssh](assets/liumssh.png)
 
-**6. Lium down**
+**3.6. lium down**
 ```bash
 # Release your rental on a pod golden-pixel-2f
 lium down golden-pixel-2f
