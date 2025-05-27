@@ -13,11 +13,15 @@ uv pip install -e .
 1. Generate your api key [here](https://celiumcompute.ai/api-keys)
 2. Add funds to your account [here](https://celiumcompute.ai/billing)
 ```bash
+# Set your celium API key.
 lium config set api_key <YOUR_API_KEY_HERE> 
+# Set path to your ssh private key
 lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
+# Select your default template
+lium config set template.default_id
+# Show your config file in: ~/.lium/config.ini 
 lium config show
 ```
-`~/.lium/config.ini`
 ![Lium config show](assets/liumconfigshow.png)
 
 ## 3. Use
