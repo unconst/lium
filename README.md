@@ -45,13 +45,13 @@ lium ls H100
 Acquries a pod with the default template image.
 ```bash
 # Rent pod with name "golden-pixel-2f"
-lium up golden-pixel-2f
+lium up noble-matrix-a3
 
 # Rent multiple pods
 lium up golden-pixel-2f, calm-jaguar-f6`
-
 ```
 > NOTE: to set the image you want to load onto your pod use `lium config set template.default_id`
+![Lium up](assets/liumup.png)
 
 **3. Lium ps**
 Show actively rented pods.
@@ -67,6 +67,7 @@ Executes a command on your running pod.
 # Get the python version on a pod:
 lium exec cosmic-raven-39 "python --version"
 ```
+![lium exec](assets/liumexec.png)
 
 **5. Lium down**
 Releases the acquired Pod.
@@ -77,6 +78,8 @@ lium down golden-pixel-2f
 # Release all rentals without confirmation
 lium down --all -y
 ```
+![lium down](assets/liumdown.png)
+
 ## 📜 License
 
 2025 Yuma Rao
