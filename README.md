@@ -18,7 +18,7 @@ lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
 lium config show
 ```
 
-## 4. Use
+## 3. Use
 
 **1. Lium ls**
 ```bash
