@@ -868,7 +868,6 @@ def rent_machine(
     if not skip_all_prompts:
         # Use full_template_display_name in the confirmation prompt
         console.print(styled(f"Template: {full_template_display_name}", "info"))
-        console.print(styled(f"Note: 'lium config set tempalte.default_id' to change the default template", "info"))
         confirm_msg = f"Acquire {len(executors_to_process)} pod(s)?"
         if not Prompt.ask(styled(confirm_msg, "key"), default="n", console=console).lower().startswith("y"):
             console.print(styled("Operation cancelled.", "info")); return
@@ -893,7 +892,9 @@ def rent_machine(
         console.print(styled(f"Failed to acquire {failure_count} pod(s):", "error"))
         for detail in failed_details:
             console.print(styled(f"  - {detail}", "error"))
-    if success_count > 0: console.print(styled("Note: Use 'lium ps' to check pod status.", "info"))
+    if success_count > 0: 
+        console.print(styled("Note: Use 'lium ps' to check pod status.", "info"))
+        console.print(styled(f"Note: Use 'lium config set tempalte.default_id' to change the default template", "info"))
     elif not executors_to_process and not failed_resolutions : console.print(styled("No action taken.", "info"))
 
 

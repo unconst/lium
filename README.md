@@ -52,7 +52,14 @@ lium exec cosmic-raven-39 "python --version"
 ```
 ![lium exec](assets/liumexec.png)
 
-**5. Lium down**
+**5. Lium SSH**
+```bash
+# Opens an ssh connection into this pod.
+lium ssh laser-cipher-a9
+```
+![lium ssh](assets/liumssh.png)
+
+**6. Lium down**
 ```bash
 # Release your rental on a pod golden-pixel-2f
 lium down golden-pixel-2f
