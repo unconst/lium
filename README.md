@@ -36,7 +36,7 @@ lium up noble-matrix-a3
 lium up golden-pixel-2f, calm-jaguar-f6`
 ```
 > NOTE: to set the image you want to load onto your pod use `lium config set template.default_id`
-![Lium up](assets/liumup.png)
+![Lium up](assets/liumuppod.png)
 
 **3. Lium ps**
 ```bash
