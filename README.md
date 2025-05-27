@@ -1,6 +1,6 @@
-# Lium CLI 🚀
+# 𓋼 Lium 
 
-List, launch, and manage high-performance GPU executors from your terminal. [CeliumCompute.ai](https://celiumcompute.ai).
+List, launch, and manage high-performance GPU executors from your terminal from [celium](https://celiumcompute.ai).
 
 ### 1. Installation
 
@@ -16,7 +16,7 @@ uv pip install -e .
 
 ### 2. Get Your API Key
 
-You'll need an API key from [CeliumCompute.ai](https://celiumcompute.ai). 
+You'll need an API key from [celium](https://celiumcompute.ai).. 
 
 1.  Sign up or log in to your CeliumCompute account.
 2.  Navigate to your API key settings (usually in your account or profile section).
