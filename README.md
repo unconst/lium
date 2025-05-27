@@ -2,6 +2,7 @@
 
 Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 
+---
 ### 1. Install
 Make sure you have uv and Python 3.10+ installed.
 ```bash
@@ -11,6 +12,7 @@ git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/
 uv pip install -e .
 ```
 
+---
 ### 2. Configure
 1. Generate your api key [here](https://celiumcompute.ai/api-keys)
 2. Add funds to your account [here](https://celiumcompute.ai/billing)
@@ -82,6 +84,7 @@ lium down --all -y
 ```
 ![lium down](assets/liumdown.png)
 
+---
 ## License
 
 2025 Yuma Rao
