@@ -24,9 +24,8 @@ You'll need an API key from [CeliumCompute.ai](https://celiumcompute.ai).
 4.  Fund your account with TAO or Visa on Celium.
 
 ### 3. Configure Lium CLI
-
-Set your API key and path to your SSH key. This key will be automatically added to new pods you create, allowing you to SSH in.
 ```bash
+# Set my API key and ssh key. Shows the current config. 
 lium config set api_key YOUR_API_KEY_HERE
 lium config set ssh.key_path ~/.ssh/id_rsa
 lium config show
@@ -42,7 +41,6 @@ lium ls H100
 ![Lium ls H100](assets/liumls.png)
 
 **2. Lium up**
-Acquries a pod with the default template image.
 ```bash
 # Rent pod with name "golden-pixel-2f"
 lium up noble-matrix-a3
@@ -54,23 +52,20 @@ lium up golden-pixel-2f, calm-jaguar-f6`
 ![Lium up](assets/liumup.png)
 
 **3. Lium ps**
-Show actively rented pods.
 ```bash
-# Show all actively rented pods and their status
+# Shows all actively rented pods and their status
 lium ps
 ```
 ![Lium ps](assets/liumps.png)
 
 **4. Lium Exec**
-Executes a command on your running pod.
 ```bash
-# Get the python version on a pod:
+# Executes python --version command on cosmic-raven-39
 lium exec cosmic-raven-39 "python --version"
 ```
 ![lium exec](assets/liumexec.png)
 
 **5. Lium down**
-Releases the acquired Pod.
 ```bash
 # Release your rental on a pod golden-pixel-2f
 lium down golden-pixel-2f
