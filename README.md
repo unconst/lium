@@ -66,7 +66,7 @@ lium ssh laser-cipher-a9
 ```
 ![lium ssh](assets/liumssh.png)
 
-**3.6. lium down**
+`lium down`
 ```bash
 # Release your rental on a pod golden-pixel-2f
 lium down golden-pixel-2f
