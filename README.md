@@ -1,4 +1,4 @@
-# 𖡼𖤣𖥧𖡼𓋼𖤣𖥧𓋼𓍊 Lium 𖡼𖤣𖥧𖡼𓋼𖤣𖥧𓋼𓍊
+# 𓋼 Lium 𓋼: 
 
 List, launch, and manage high-performance GPU executors from your terminal from [celium](https://celiumcompute.ai).
 
