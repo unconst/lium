@@ -16,7 +16,7 @@ uv pip install -e .
 
 ### 2. Get Your API Key
 
-You'll need an API key from [CeliumCompute.ai](https://celiumcompute.ai). 
+You'll need an API key from [celium](https://celiumcompute.ai).. 
 
 1.  Sign up or log in to your CeliumCompute account.
 2.  Navigate to your API key settings (usually in your account or profile section).
