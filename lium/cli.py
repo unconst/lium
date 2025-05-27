@@ -104,50 +104,61 @@ def extract_gpu_model(machine_name: str) -> str:
 
 
 def extract_metrics(executor: Dict[str, Any]) -> Dict[str, float]:
-    """Extract all metrics needed for Pareto frontier calculation."""
+    """Extract all metrics, keeping them in consistent base units where possible for later formatting."""
     specs = executor.get("specs", {})
-    gpu_details = specs.get("gpu", {}).get("details", [{}])[0]
+    gpu_details_list = specs.get("gpu", {}).get("details", [])
+    # Handle cases where there might be multiple GPUs, average or take first for some singular GPU specs
+    # For simplicity, taking the first GPU's details if multiple are listed for pcie, mem, graphics speed.
+    # Capacity should ideally be summed if representing total VRAM for multi-GPU, but API gives per-GPU capacity.
+    # For now, if multiple GPUs, we'll use the first GPU's singular specs for simplicity of display.
+    gpu_details = gpu_details_list[0] if gpu_details_list else {}
+
     hard_disk = specs.get("hard_disk", {})
-    ram = specs.get("ram", {})
+    ram_data = specs.get("ram", {})
     network = specs.get("network", {})
-    gpu_count = specs.get("gpu", {}).get("count", 1)
+    gpu_spec_data = specs.get("gpu", {})
+    gpu_count = gpu_spec_data.get("count", 1) # Default to 1 if count is missing
     
-    # Price per GPU
     price_per_gpu = executor.get("price_per_hour", 0) / gpu_count if gpu_count > 0 else float('inf')
     
-    # GPU metrics
-    gpu_capacity = gpu_details.get("capacity", 0)  # MiB
-    pcie_speed = gpu_details.get("pcie_speed", 0)  # MB/s
-    memory_speed = gpu_details.get("memory_speed", 0)  # GB/s
-    graphics_speed = gpu_details.get("graphics_speed", 0)  # TFLOPS
-    gpu_utilization = gpu_details.get("gpu_utilization", 0)
+    # GPU metrics - ensure consistent units from API or convert to a base
+    # API gives gpu_details.capacity in MiB (for NVIDIA H100 80GB, it's 81559 MiB)
+    total_gpu_capacity_mib = sum(g.get("capacity", 0) for g in gpu_details_list) if gpu_details_list else 0
+    # If we want per-GPU VRAM in table, then use gpu_details.get("capacity",0)
+    # For the Pareto and table, let's use per-GPU VRAM for now if multi-GPU means identical cards
+    per_gpu_capacity_mib = gpu_details.get("capacity", 0) 
+
+    pcie_speed_mbs = gpu_details.get("pcie_speed", 0)  # Assuming API gives MB/s
+    memory_speed_gbs = gpu_details.get("memory_speed", 0) # Assuming API gives GB/s (e.g. HBM speed)
+    graphics_speed_tflops = gpu_details.get("graphics_speed", 0) # Assuming API gives TFLOPs
+    gpu_utilization = gpu_details.get("gpu_utilization", 0) # Percentage
     
     # System metrics
-    ram_total = ram.get("total", 0)  # total is in KB
-    disk_free = hard_disk.get("free", 0)  # free is in KB
+    ram_total_kb = ram_data.get("total", 0)  # API gives ram.total in KB
+    disk_free_kb = hard_disk.get("free", 0) # API gives hard_disk.free in KB
     
-    # Network metrics
-    upload_speed = network.get("upload_speed", 0) or 0
-    download_speed = network.get("download_speed", 0) or 0
+    # Network metrics - assuming API gives Mbps
+    upload_speed_mbps = network.get("upload_speed", 0) or 0
+    download_speed_mbps = network.get("download_speed", 0) or 0
     
     return {
-        'price_per_hour': price_per_gpu,
-        'gpu_capacity': gpu_capacity,
-        'ram_total': ram_total / 1024,  # Convert KB to MiB
-        'disk_free': disk_free, # Keep in KB for formatting function
-        'pcie_speed': pcie_speed,
-        'memory_speed': memory_speed,
-        'graphics_speed': graphics_speed,
-        'gpu_utilization': gpu_utilization,
-        'upload_speed': upload_speed,
-        'download_speed': download_speed,
+        'price_per_gpu_hour': price_per_gpu, # Renamed for clarity in format_metric
+        'vram_per_gpu_mib': per_gpu_capacity_mib, # VRAM per GPU in MiB
+        'ram_total_kb': ram_total_kb, # Total system RAM in KB
+        'disk_free_kb': disk_free_kb, # Free disk space in KB
+        'pcie_speed_mbs': pcie_speed_mbs,
+        'gpu_memory_speed_gbs': memory_speed_gbs,
+        'graphics_speed_tflops': graphics_speed_tflops,
+        'gpu_utilization_percent': gpu_utilization,
+        'net_upload_mbps': upload_speed_mbps,
+        'net_download_mbps': download_speed_mbps,
     }
 
 
 def dominates(metrics_a: Dict[str, float], metrics_b: Dict[str, float]) -> bool:
     """Check if executor A dominates executor B in Pareto sense."""
     # Define which metrics should be minimized (lower is better)
-    minimize_metrics = {'price_per_hour', 'gpu_utilization'}
+    minimize_metrics = {'price_per_gpu_hour', 'gpu_utilization_percent'}
     
     at_least_one_better = False
     
@@ -189,31 +200,26 @@ def calculate_pareto_frontier(executors: List[Dict[str, Any]]) -> List[Tuple[Dic
     return results
 
 
-def format_metric(value: float, metric_type: str) -> str:
-    """Format metric values for display."""
-    if value == 0 or value == float('inf'):
+def format_metric(value: Optional[float], metric_key: str) -> str:
+    """Format metric values for display with appropriate units."""
+    if value is None or value == float('inf') or (isinstance(value, (int,float)) and value < 0): # Treat negative as N/A for most metrics
         return "N/A"
+    if value == 0 and metric_key not in ['gpu_utilization_percent']: # Allow 0% utilization
+         # For speeds/capacities, 0 often means N/A or not present
+         if metric_key not in ['price_per_gpu_hour']: # Allow $0.00 price
+            return "N/A" if metric_key != 'graphics_speed_tflops' else "0" # TFLOPs can be 0
+
+    if metric_key == 'price_per_gpu_hour': return f"${value:.2f}"
+    if metric_key == 'vram_per_gpu_mib': return f"{value / 1024:.0f}"  # MiB to GB
+    if metric_key == 'ram_total_kb': return f"{value / 1024 / 1024:.0f}" # KB to GB
+    if metric_key == 'disk_free_kb': return f"{value / 1024 / 1024:.0f}" # KB to GB
+    if metric_key == 'pcie_speed_mbs': return f"{int(value)}" # MB/s
+    if metric_key == 'gpu_memory_speed_gbs': return f"{value:.0f}" # GB/s
+    if metric_key == 'graphics_speed_tflops': return f"{value:.0f}" # TFLOPs
+    if metric_key == 'gpu_utilization_percent': return f"{value:.0f}%"
+    if metric_key in ['net_upload_mbps', 'net_download_mbps']: return f"{int(value)}" # Mbps
     
-    if metric_type in ['price_per_hour']:
-        return f"${value:.2f}"
-    elif metric_type in ['gpu_capacity', 'ram_total']:
-        # Convert MiB to GB
-        return f"{value/1024:.0f}"
-    elif metric_type == 'disk_free':
-        # Assuming input is in KB, convert to GB (KB -> MB -> GB)
-        return f"{value / 1024 / 1024:.0f}"
-    elif metric_type in ['upload_speed', 'download_speed']:
-        return f"{int(value)}"
-    elif metric_type in ['gpu_utilization']:
-        return f"{value:.0f}%"
-    elif metric_type in ['pcie_speed']:
-        return f"{int(value)}"
-    elif metric_type in ['memory_speed']:
-        return f"{value:.0f}"
-    elif metric_type in ['graphics_speed']:
-        return f"{value:.0f}"
-    else:
-        return f"{value:.1f}"
+    return str(value) # Fallback
 
 
 def group_executors_by_gpu(executors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -328,14 +334,14 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         title_message = f"Top {shown_count}/{total_for_type} Executors of type: {gpu_type}"
 
     table = Table(
-        # title=styled(title_message, "title"),
+        # title=styled(title_message, "title"), # Title removed as per user's last implicit edit
         box=None,
         show_header=True,
         show_lines=False,
         show_edge=False,
-        padding=(0, 1), # Simpler padding (vertical, horizontal)
+        padding=(0, 1),
         header_style="table.header",
-        title_style="title",
+        # title_style="title", # No longer needed if title is removed
         expand=True
     )
     
@@ -343,14 +349,14 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
     table.add_column("Pod", style="dim", no_wrap=False, min_width=15, max_width=20)
     table.add_column("Config", style="executor.gpu", no_wrap=True)
     table.add_column("$/GPU/hr", style="executor.price", justify="right")
-    table.add_column("VRAM", style="number", justify="right")
-    table.add_column("RAM", style="number", justify="right")
-    table.add_column("Disk", style="number", justify="right")
-    table.add_column("PCIe", style="number", justify="right")
-    table.add_column("Mem", style="number", justify="right")
+    table.add_column("VRAM (GB)", style="number", justify="right")
+    table.add_column("RAM (GB)", style="number", justify="right")
+    table.add_column("Disk (GB)", style="number", justify="right")
+    table.add_column("PCIe (MB/s)", style="number", justify="right")
+    table.add_column("Mem (GB/s)", style="number", justify="right")
     table.add_column("TFLOPs", style="number", justify="right")
-    table.add_column("Net ↑", style="info", justify="right")
-    table.add_column("Net ↓", style="info", justify="right")
+    table.add_column("Net ↑ (Mbps)", style="info", justify="right")
+    table.add_column("Net ↓ (Mbps)", style="info", justify="right")
     table.add_column("Location", style="executor.location", width=10, no_wrap=True, overflow="ellipsis") # Truncate if needed
     
     # Add rows - iterate over executors_to_display instead of all pareto_results
@@ -369,15 +375,15 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         table.add_row(
             executor_name_huid, # This is for the "Pod" column
             config,
-            format_metric(metrics['price_per_hour'], 'price_per_hour'),
-            format_metric(metrics['gpu_capacity'], 'gpu_capacity'),
-            format_metric(metrics['ram_total'], 'ram_total'),
-            format_metric(metrics['disk_free'], 'disk_free'),
-            format_metric(metrics['pcie_speed'], 'pcie_speed'),
-            format_metric(metrics['memory_speed'], 'memory_speed'),
-            format_metric(metrics['graphics_speed'], 'graphics_speed'),
-            format_metric(metrics['upload_speed'], 'upload_speed'),
-            format_metric(metrics['download_speed'], 'download_speed'),
+            format_metric(metrics.get('price_per_gpu_hour'), 'price_per_gpu_hour'),
+            format_metric(metrics.get('vram_per_gpu_mib'), 'vram_per_gpu_mib'),
+            format_metric(metrics.get('ram_total_kb'), 'ram_total_kb'),
+            format_metric(metrics.get('disk_free_kb'), 'disk_free_kb'),
+            format_metric(metrics.get('pcie_speed_mbs'), 'pcie_speed_mbs'),
+            format_metric(metrics.get('gpu_memory_speed_gbs'), 'gpu_memory_speed_gbs'),
+            format_metric(metrics.get('graphics_speed_tflops'), 'graphics_speed_tflops'),
+            format_metric(metrics.get('net_upload_mbps'), 'net_upload_mbps'),
+            format_metric(metrics.get('net_download_mbps'), 'net_download_mbps'),
             country,
             style=style
         )
