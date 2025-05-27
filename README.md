@@ -35,7 +35,6 @@ lium up noble-matrix-a3
 # Rent multiple pods
 lium up golden-pixel-2f, calm-jaguar-f6`
 ```
-> NOTE: to set the image you want to load onto your pod use `lium config set template.default_id`
 ![Lium up](assets/liumuppod.png)
 
 **3. Lium ps**
@@ -54,7 +53,7 @@ lium exec cosmic-raven-39 "python --version"
 
 **5. Lium SSH**
 ```bash
-# Opens an ssh connection into this pod.
+# Opens an ssh connection into laser-cipher-a9
 lium ssh laser-cipher-a9
 ```
 ![lium ssh](assets/liumssh.png)

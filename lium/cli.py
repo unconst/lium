@@ -950,7 +950,7 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
 
     if not pods_to_terminate_info: console.print(styled("No pods selected for termination.", "info")); return
 
-    console.print("\n" + styled("Executors to release", "header"))
+    console.print("\n" + styled("Pods to release", "header"))
     for pod_info in pods_to_terminate_info:
         console.print(f"  - {pod_info['original_ref']}") # Only the original HUID reference
     console.print("")
