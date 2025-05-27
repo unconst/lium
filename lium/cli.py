@@ -576,12 +576,36 @@ def config_get(key: str):
     else:
         console.print(styled(f"Key '{key}' not found.", "error"))
 
-@config.command(name="set", help="Set a configuration value.")
+@config.command(name="set", help="Set a configuration value. Run `lium config set template.default_id` for interactive template selection.")
 @click.argument("key")
-@click.argument("value")
-def config_set(key: str, value: str):
-    set_config_value(key, value)
-    console.print(styled(f"Set '{key}' to: ", "success") + styled(value, "primary"))
+@click.argument("value", required=False)
+def config_set(key: str, value: Optional[str]):
+    if key == "template.default_id" and value is None:
+        console.print(styled("Interactive template selection for default:" , "info"))
+        # Need LiumAPIClient for select_template_interactively
+        api_key_for_template_selection = get_api_key()
+        if not api_key_for_template_selection:
+            console.print(styled("API key required to fetch templates. Please configure api.api_key first.", "error"))
+            return
+        client = LiumAPIClient(api_key_for_template_selection)
+        selected_template_id = select_template_interactively(client, skip_prompts=False)
+        if selected_template_id:
+            set_config_value(key, selected_template_id)
+            # Fetch name for confirmation message
+            try:
+                templates = client.get_templates()
+                tpl_name = next((tpl.get("name") for tpl in templates if tpl.get("id") == selected_template_id), selected_template_id)
+            except:
+                tpl_name = selected_template_id
+            console.print(styled(f"Set '{key}' to: '{tpl_name}' (ID: {selected_template_id})", "success"))
+        else:
+            console.print(styled("No template selected. Configuration not changed.", "info"))
+    elif value is not None: # Standard key-value set
+        set_config_value(key, value)
+        console.print(styled(f"Set '{key}' to: ", "success") + styled(value, "primary"))
+    else:
+        console.print(styled(f"Error: Value required for setting key '{key}'.", "error"))
+        console.print(styled("To set a default template interactively, run: lium config set template.default_id", "info"))
 
 @config.command(name="unset", help="Remove a configuration value.")
 @click.argument("key")
@@ -704,111 +728,150 @@ def select_template_interactively(client: LiumAPIClient, skip_prompts: bool = Fa
 
 @cli.command(name="up", help="Rent pod(s) on executor(s) specified by Name (Executor HUID/UUID).")
 @click.argument("executor_names_or_ids", type=str, nargs=-1)
-@click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names if multiple executors are targeted. If single executor, this is the exact pod name.")
+@click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names. If single executor, this is the exact pod name.")
 @click.option("--template-id", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
-@click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations and use default first template if --template-id is not set.")
+@click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations. Uses configured/default template if --template-id is not set.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def rent_machine(
-    executor_names_or_ids: Tuple[str, ...], 
-    template_id_option: Optional[str], 
+    executor_names_or_ids: Tuple[str, ...],
+    template_id_option: Optional[str],
     skip_all_prompts: bool,
     api_key: Optional[str],
-    pod_name_prefix_opt: Optional[str] 
+    pod_name_prefix_opt: Optional[str]
 ):
-    """Rents pod(s) on specified executor(s).
-
-    EXECUTOR_NAMES_OR_IDS: Space-separated or comma-separated list of executor Names (HUIDs from `lium ls`)
-    or full executor UUIDs.
-    Example: lium up huid1 huid2,huid3 --prefix my-pods --template-id ...
-    """
     if not api_key: api_key = get_api_key()
     if not api_key: console.print(styled("Error: No API key found.", "error")); return
     ssh_public_keys = get_ssh_public_keys()
     if not ssh_public_keys: console.print(styled("Error: No SSH public keys found.", "error")); return
+    
     client = LiumAPIClient(api_key)
+    template_id_to_use: Optional[str] = None
+    template_name_for_display: str = "Unknown Template"
+    template_source_info: str = ""
 
-    template_id_to_use = template_id_option
+    if template_id_option:
+        template_id_to_use = template_id_option
+        # Fetch name for display if possible
+        try: 
+            templates = client.get_templates() # Potentially cache this if called multiple times
+            found = next((t for t in templates if t.get("id") == template_id_to_use), None)
+            if found: template_name_for_display = found.get("name", template_id_to_use)
+            else: template_name_for_display = template_id_to_use + " (not found in list)"
+        except: template_name_for_display = template_id_to_use + " (details unavailable)"
+        template_source_info = styled(f"Using provided template: '{template_name_for_display}' (ID: ...{template_id_to_use[-12:]})", "info")
+    else:
+        configured_default_id = get_config_value("template.default_id")
+        if configured_default_id:
+            template_id_to_use = configured_default_id
+            try: 
+                templates = client.get_templates()
+                found = next((t for t in templates if t.get("id") == template_id_to_use), None)
+                if found: template_name_for_display = found.get("name", template_id_to_use)
+                else: template_name_for_display = template_id_to_use + " (not found in list)"
+            except: template_name_for_display = template_id_to_use + " (details unavailable)"
+            if skip_all_prompts:
+                template_source_info = styled(f"Using default template from config: '{template_name_for_display}' (ID: ...{template_id_to_use[-12:]})", "info")
+            # If not skipping prompts, template_name_for_display is set, actual confirmation comes later
+        else: # No option, no config default -> interactive or API default
+            # select_template_interactively now only called if truly no prior template source
+            # it also handles its own skip_prompts logic for API default.
+            selected_template_id_interactive = select_template_interactively(client, skip_prompts=skip_all_prompts)
+            if not selected_template_id_interactive:
+                # Error/abort messages handled within select_template_interactively
+                return
+            template_id_to_use = selected_template_id_interactive
+            try: # Get name for display from interactive selection
+                templates = client.get_templates() # Potentially re-fetch or use cached
+                found = next((t for t in templates if t.get("id") == template_id_to_use), None)
+                if found: template_name_for_display = found.get("name", template_id_to_use)
+                else: template_name_for_display = template_id_to_use
+            except: template_name_for_display = template_id_to_use
+            # For interactive path, message about template used is part of the final confirmation or handled by select_template_interactively if --yes
+            if skip_all_prompts: # If --yes led to API default, select_template_interactively printed it
+                 pass # message already printed
+            else: # Template was interactively selected
+                 template_source_info = styled(f"Using selected template: '{template_name_for_display}' (ID: ...{template_id_to_use[-12:]})", "info")
+    
     if not template_id_to_use:
-        template_id_to_use = select_template_interactively(client, skip_prompts=skip_all_prompts)
-        if not template_id_to_use:
-            return 
-        # If interactive and successful, select_template_interactively doesn't print "Using..."
-        # Only print if it was explicitly provided, or skip_prompts (default) was used.
-        # This is now handled inside select_template_interactively for the --yes case.
-        # For interactive choice, no extra message is needed here.
-    elif template_id_option: # Only if --template-id was directly passed
-        console.print(styled(f"Using provided template: ...{template_id_to_use[-12:]}", "info"))
+        console.print(styled("Error: No template specified or selected.", "error"))
+        return
+    
+    if template_source_info: # Print template source only if it wasn't part of an interactive prompt already
+        console.print(template_source_info)
 
+    # Fetch full template details for display in the final confirmation prompt
+    full_template_display_name = template_id_to_use # Fallback to ID
+    if template_id_to_use:
+        try:
+            # This might re-fetch if select_template_interactively was just called,
+            # consider passing template details down or caching if performance becomes an issue.
+            templates_list_for_name = client.get_templates() 
+            found_template_details = next((tpl for tpl in templates_list_for_name if tpl.get("id") == template_id_to_use), None)
+            if found_template_details:
+                tpl_name = found_template_details.get("name", "Unnamed")
+                tpl_image = found_template_details.get("docker_image", "N/A")
+                tpl_tag = found_template_details.get("docker_image_tag", "latest")
+                full_template_display_name = f"'{tpl_name}' ({tpl_image}:{tpl_tag})"
+            else:
+                full_template_display_name = f"ID '{template_id_to_use}' (details not found)"
+        except Exception as e:
+            # console.print(styled(f"Warning: Could not fetch full details for template {template_id_to_use}: {e}", "dim"))
+            full_template_display_name = f"ID '{template_id_to_use}' (fetch error)"
+
+    # ... (HUID resolution logic - largely unchanged, ensure `all_executors_data` is fetched once if needed)
     raw_identifiers = []
     for item in executor_names_or_ids: raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
     target_identifiers = [ident for ident in raw_identifiers if ident]
     if not target_identifiers: console.print(styled("Error: No executor Names (HUIDs) or UUIDs provided.", "error")); return
-
-    executors_to_process: List[Dict[str, Any]] = []
-    all_executors_data = None # Fetched on demand
-    failed_resolutions = []
+    executors_to_process: List[Dict[str, Any]] = []; all_executors_data = None; failed_resolutions = []
+    # Fetch executor list once if any HUIDs are present or if we need to resolve UUIDs to HUIDs for API pod_name
+    fetch_all_execs = any(bool(re.match(r"^[a-z]+-[a-z]+-[0-9a-f]{2}$", ident.lower())) or '-' in ident for ident in target_identifiers)
+    if fetch_all_execs:
+        try: all_executors_data = client.get_executors()
+        except Exception as e: console.print(styled(f"Critical Error: Could not fetch executor list: {str(e)}", "error")); return
 
     for i, identifier in enumerate(target_identifiers):
-        executor_id_to_rent = None
-        # pod_name_for_api will be the HUID of the executor machine
-        pod_name_for_api = identifier # Placeholder, will be replaced by HUID or kept as UUID if HUID fails
-        
+        executor_id_to_rent = None; pod_name_for_api_base = identifier # Base for API pod_name if no prefix
         is_likely_huid = bool(re.match(r"^[a-z]+-[a-z]+-[0-9a-f]{2}$", identifier.lower()))
-
-        if all_executors_data is None: # Fetch only once, if needed
-            try: all_executors_data = client.get_executors()
-            except Exception as e: console.print(styled(f"Critical Error: Could not fetch executor list: {str(e)}", "error")); return
-
-        found_executor_for_id = False
         if is_likely_huid:
+            if not all_executors_data: failed_resolutions.append(identifier + " (no executor data)"); continue
+            found_executor = False
             for executor in all_executors_data:
-                ex_id = executor.get("id", "")
-                current_huid = generate_human_id(ex_id)
-                if current_huid == identifier.lower():
-                    executor_id_to_rent = ex_id
-                    pod_name_for_api = current_huid # Use actual HUID for API
-                    found_executor_for_id = True; break
-        else: # Assume it's a UUID, try to find it and its HUID
-            for executor in all_executors_data:
-                ex_id = executor.get("id", "")
-                if ex_id == identifier:
-                    executor_id_to_rent = ex_id
-                    pod_name_for_api = generate_human_id(ex_id) # Get HUID for API name
-                    found_executor_for_id = True; break
+                ex_id = executor.get("id", ""); current_huid = generate_human_id(ex_id)
+                if current_huid == identifier.lower(): executor_id_to_rent = ex_id; pod_name_for_api_base = current_huid; found_executor = True; break
+            if not found_executor: failed_resolutions.append(identifier); continue
+        else: # Assume UUID
+            executor_id_to_rent = identifier 
+            found_huid_for_uuid = False
+            if all_executors_data:
+                for executor in all_executors_data:
+                    if executor.get("id", "") == identifier: pod_name_for_api_base = generate_human_id(identifier); found_huid_for_uuid = True; break
+            # If UUID not found in all_executors_data to get its HUID, pod_name_for_api_base remains the UUID
+            if not found_huid_for_uuid: pod_name_for_api_base = identifier 
+        if not executor_id_to_rent: failed_resolutions.append(identifier + " (ID error)"); continue
         
-        if not found_executor_for_id:
-            failed_resolutions.append(identifier)
-            continue
-        
-        # Final pod name for this specific instance (if multiple from same prefix)
-        final_instance_name = pod_name_prefix_opt
-        if len(target_identifiers) > 1:
-            # Use the API pod name (executor HUID/UUID) as base for indexed name if no prefix
-            base_for_indexing = pod_name_prefix_opt or pod_name_for_api 
-            final_instance_name = f"{base_for_indexing}-{i+1}"
-        elif pod_name_prefix_opt: # Single target, and prefix_opt is given
-             final_instance_name = pod_name_prefix_opt
-        else: # Single target, no prefix_opt given, use the executor HUID/UUID for the instance name
-             final_instance_name = pod_name_for_api
-
-        executors_to_process.append({
-            "executor_id": executor_id_to_rent, 
-            "pod_name_for_api": final_instance_name, # This is the unique name for THIS pod instance
-            "original_ref": identifier
-        })
+        final_instance_name_for_api = pod_name_prefix_opt
+        if len(target_identifiers) > 1: final_instance_name_for_api = f"{pod_name_prefix_opt or pod_name_for_api_base}-{i+1}"
+        elif pod_name_prefix_opt: final_instance_name_for_api = pod_name_prefix_opt
+        else: final_instance_name_for_api = pod_name_for_api_base
+        executors_to_process.append({"executor_id": executor_id_to_rent, "pod_name_for_api": final_instance_name_for_api, "original_ref": identifier})
+    
     if failed_resolutions: console.print(styled(f"Warning: Unresolved: {', '.join(failed_resolutions)}", "warning"))
     if not executors_to_process: console.print(styled("No valid executors to process.", "info")); return
     
-    console.print("\n" + styled("Executors to be acquired:", "header"))
-    for proc_info in executors_to_process:
-        console.print(f"  - {proc_info['original_ref']}") # Simplified: only original ref
-    # Removed: console.print(styled(f"(Using Template ID: ...)", "dim"))
-    console.print("") # Keep one spacer for readability before prompt
+    console.print("\n" + styled("Pods to be acquired:", "header"))
+    for proc_info in executors_to_process: console.print(styled(f"  - {proc_info['original_ref']}", "info"))
+    console.print("")
 
     if not skip_all_prompts:
-        if not Prompt.ask(styled(f"Continue? ({len(executors_to_process)} pod(s))", "key"), default="n", console=console).lower().startswith("y"):
+        # Use full_template_display_name in the confirmation prompt
+        console.print(styled(f"Template: {full_template_display_name}", "info"))
+        console.print(styled(f"Note: 'lium config set tempalte.default_id' to change the default template", "info"))
+        confirm_msg = f"Acquire {len(executors_to_process)} pod(s)?"
+        if not Prompt.ask(styled(confirm_msg, "key"), default="n", console=console).lower().startswith("y"):
             console.print(styled("Operation cancelled.", "info")); return
-
+    
+    # ... (renting loop and final summary) ...
     success_count = 0; failure_count = 0; failed_details = []
     for proc_info in executors_to_process:
         executor_id, pod_name_for_api, original_ref = proc_info['executor_id'], proc_info['pod_name_for_api'], proc_info['original_ref']
@@ -828,7 +891,7 @@ def rent_machine(
         console.print(styled(f"Failed to acquire {failure_count} pod(s):", "error"))
         for detail in failed_details:
             console.print(styled(f"  - {detail}", "error"))
-    if success_count > 0: console.print(styled("Use 'lium ps' to check status.", "info"))
+    if success_count > 0: console.print(styled("Note: Use 'lium ps' to check pod status.", "info"))
     elif not executors_to_process and not failed_resolutions : console.print(styled("No action taken.", "info"))
 
 

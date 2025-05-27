@@ -1,6 +1,6 @@
 # Lium CLI 🚀
 
-Your one-stop command-line interface for managing compute resources on [CeliumCompute.ai](https://celiumcompute.ai).
+CLI for  [CeliumCompute.ai](https://celiumcompute.ai).
 
 ---
 
