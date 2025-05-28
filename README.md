@@ -1,5 +1,7 @@
 # 𓋼 Lium 
 
+TAO + LIUM = GPU
+
 Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 
 ---
