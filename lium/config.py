@@ -3,13 +3,16 @@
 import os
 import configparser
 from pathlib import Path
+from rich.console import Console
+from rich.prompt import Prompt 
 from typing import Optional, Any, Dict, List
 import json
+from .styles import styled, get_theme
 
 CONFIG_DIR = Path.home() / ".lium"
 JSON_CONFIG_FILE = CONFIG_DIR / "config.json"
 INI_CONFIG_FILE = CONFIG_DIR / "config.ini"
-
+console = Console(theme=get_theme())
 
 def _ensure_config_dir_exists() -> None:
     """Ensures the ~/.lium directory exists."""
@@ -82,23 +85,25 @@ def get_config_value(key: str) -> Optional[str]:
     """Retrieves a value from the INI configuration.
     Dot notation 'section.option' is used for key.
     If no section is provided (no dot), it tries the 'DEFAULT' section.
+    If key is 'api_key' and it's not found, it prompts the user and saves it.
     """
     config = load_config_parser()
     if '.' in key:
         section, option = key.split('.', 1)
     else: # Assume DEFAULT section or a predefined section for top-level keys if desired
-        # For api_key, we will explicitly check an 'api' section for robustness
-        if key == "api_key": 
+        if key == "api_key":
             section, option = "api", "api_key"
         else: # Fallback to DEFAULT for other direct keys
             section, option = "DEFAULT", key
     
+    value = None
     if config.has_option(section, option):
-        return config.get(section, option)
+        value = config.get(section, option)
     # Check DEFAULT section as a fallback if section was specified but option not found
     elif section != 'DEFAULT' and config.has_option('DEFAULT', option):
-        return config.get('DEFAULT', option)
-    return None
+        value = config.get('DEFAULT', option)
+
+    return value
 
 def set_config_value(key: str, value: Any) -> None:
     """Sets a value in the INI configuration.
@@ -145,9 +150,18 @@ def unset_config_value(key: str) -> bool:
 
 def get_api_key() -> Optional[str]:
     """Gets the API key from environment or config file."""
-    env_api_key = os.environ.get("LIUM_API_KEY")
-    if env_api_key:
-        return env_api_key
+    return get_config_value("api.api_key")
+
+def get_or_set_api_key() -> Optional[str]:
+    """Gets the API key from environment or config file."""
+    api_key = get_config_value("api.api_key")
+    if api_key == None:
+        # This import is local to avoid circular dependencies if config is imported early
+        api_key_input = Prompt.ask(
+            styled("Please enter your Lium API key (See: https://celiumcompute.ai/api-keys)", "info")
+        )
+        if api_key_input:
+            set_config_value('api.api_key', api_key_input) # set_config_value handles section/option logic
     return get_config_value("api.api_key")
 
 def get_ssh_public_keys() -> List[str]:
@@ -198,6 +212,19 @@ def get_ssh_public_keys() -> List[str]:
         pass 
         
     return public_keys
+
+def get_or_set_ssh_key() -> List[str]:
+    private_key_path_str = get_config_value("ssh.key_path")
+    if private_key_path_str == None:
+        # This import is local to avoid circular dependencies if config is imported early
+        ssh_key_input = Prompt.ask(
+            styled("Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa)", "info")
+        )
+        ssh_key_input = os.path.expanduser(ssh_key_input)
+        if ssh_key_input:
+            set_config_value('ssh.key_path', ssh_key_input) # set_config_value handles section/option logic
+            set_config_value('ssh.user', 'root') # set_config_value handles section/option logic
+    return get_ssh_public_keys
 
 def get_config_path() -> Path:
     """Returns the path to the configuration file."""

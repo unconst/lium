@@ -73,6 +73,7 @@ class LiumAPIClient:
             "template_id": template_id,
             "user_public_key": user_public_keys  # API expects "user_public_key"
         }
+        print (url, payload)
         response = requests.post(url, headers=self.headers, json=payload)
         response.raise_for_status() # Will raise an HTTPError for bad responses (4xx or 5xx)
         return response.json()

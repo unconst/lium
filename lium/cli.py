@@ -25,12 +25,12 @@ import shutil # To check if ssh command exists
 
 from .api import LiumAPIClient
 from .config import (
-    get_api_key, 
+    get_or_set_ssh_key,
+    get_or_set_api_key,
     set_config_value, 
     get_config_value, 
     unset_config_value, 
     get_config_path,
-    get_ssh_public_keys,
     load_config_parser
 )
 from .styles import get_theme, styled, SolarizedColors, MonochromeColors, style_manager, ColorScheme
@@ -396,6 +396,10 @@ def cli():
     """Lium CLI - Manage compute executors."""
     pass
 
+@cli.command(name="init")
+def init_lium():
+    get_or_set_api_key()
+    get_or_set_ssh_key()
 
 @cli.command(name="ls")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
@@ -408,7 +412,7 @@ def list_executors(api_key: Optional[str], gpu_type_filter: Optional[str]):
     """
     # Get API key from various sources
     if not api_key:
-        api_key = get_api_key()
+        api_key = get_or_set_api_key()
     
     if not api_key:
         console.print(styled("Error:", "error") + styled(" No API key found. Please set LIUM_API_KEY environment variable or run 'lium config set-api-key'", "primary"))
@@ -468,7 +472,7 @@ def get_status_style(status: str) -> str:
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def list_pods(api_key: Optional[str]):
     """List all active pods for the user."""
-    if not api_key: api_key = get_api_key()
+    if not api_key: api_key = get_or_set_api_key()
     if not api_key:
         console.print(styled("Error:", "error") + styled(" No API key found. Please set LIUM_API_KEY or use 'lium config set api_key <YOUR_KEY>'", "primary"))
         return
@@ -592,7 +596,7 @@ def config_set(key: str, value: Optional[str]):
     if key == "template.default_id" and value is None:
         console.print(styled("Interactive template selection for default:" , "info"))
         # Need LiumAPIClient for select_template_interactively
-        api_key_for_template_selection = get_api_key()
+        api_key_for_template_selection = get_or_set_api_key()
         if not api_key_for_template_selection:
             console.print(styled("API key required to fetch templates. Please configure api.api_key first.", "error"))
             return
@@ -768,9 +772,9 @@ def rent_machine(
     api_key: Optional[str],
     pod_name_prefix_opt: Optional[str]
 ):
-    if not api_key: api_key = get_api_key()
+    if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error: No API key found.", "error")); return
-    ssh_public_keys = get_ssh_public_keys()
+    ssh_public_keys = get_or_set_ssh_key()
     if not ssh_public_keys: console.print(styled("Error: No SSH public keys found.", "error")); return
     
     client = LiumAPIClient(api_key)
@@ -936,7 +940,7 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
     POD_NAMES: Space-separated or comma-separated list of pod Names (HUIDs).
     Example: lium down name1 name2,name3
     """
-    if not api_key: api_key = get_api_key()
+    if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error: No API key found.", "error")); return
     target_huids_flat = []
     if pod_names:
@@ -1043,7 +1047,7 @@ def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], ba
         console.print(styled("Error: No command or script content to execute.", "error"))
         return
 
-    if not api_key: api_key = get_api_key()
+    if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
 
     ssh_key_path_str = get_config_value("ssh.key_path")
@@ -1051,7 +1055,7 @@ def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], ba
         console.print(styled("Error: SSH key path not configured. Use 'lium config set ssh.key_path /path/to/your/private_key'", "error"))
         return
     
-    # Note: paramiko needs the *private* key. get_ssh_public_keys() was for API.
+    # Note: paramiko needs the *private* key. get_or_set_ssh_key() was for API.
     # We should guide user to set private key path for `lium exec`.
     # For now, assume ssh.key_path in config IS the private key path for this command.
     # This might require a new config entry like ssh.private_key_path if ssh.key_path is strictly public.
@@ -1177,7 +1181,7 @@ def ssh_to_pod(pod_name_huid: str, api_key: Optional[str]):
         console.print(styled("Error: 'ssh' command not found in your system PATH. Please install an SSH client.", "error"))
         return
 
-    if not api_key: api_key = get_api_key()
+    if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
 
     private_key_path_str = get_config_value("ssh.key_path")

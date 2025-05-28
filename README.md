@@ -12,23 +12,15 @@ git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/
 uv pip install -e .
 ```
 
----
-### Configure
-1. Generate your api key [here](https://celiumcompute.ai/api-keys)
-2. Add funds to your account [here](https://celiumcompute.ai/billing)
-```bash
-# Set your celium API key.
-lium config set api_key <YOUR_API_KEY_HERE> 
-# Set path to your ssh private key
-lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
-# Select your default template
-lium config set template.default_id
-# Show your config file in: ~/.lium/config.ini 
-lium config show
-```
-![Lium config show](assets/liumconfigshow.png)
-
 ### Use
+
+---
+`lium init` 
+```bash
+# Initializes the creation of your config
+lium init
+```
+![Lium ls H100](assets/liumls.png)
 
 ---
 `lium ls` 
@@ -92,6 +84,20 @@ lium down golden-pixel-2f
 lium down --all -y
 ```
 ![lium down](assets/liumdown.png)
+
+---
+`lium config`
+```bash
+# Set your celium API key: (https://celiumcompute.ai/api-keys)
+lium config set api_key <YOUR_API_KEY_HERE> 
+# Set path to your ssh private key
+lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
+# Select your default template
+lium config set template.default_id
+# Show your config file in: ~/.lium/config.ini 
+lium config show
+```
+![Lium config show](assets/liumconfigshow.png)
 
 ---
 ## License
