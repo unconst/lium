@@ -1,5 +1,6 @@
 """Main CLI entry point for Lium."""
 
+import time
 import click
 from rich.console import Console
 from rich.table import Table
@@ -395,6 +396,43 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
 def cli():
     """Lium CLI - Manage compute executors."""
     pass
+
+@cli.command(name="fund")
+def init_lium():
+    import bittensor as bt
+    api_key = get_or_set_api_key()
+    client = LiumAPIClient(api_key)
+    user_info = client.get_users_me()
+    funding_wallets = client.get_funding_wallets()
+    if len(funding_wallets) == 0:
+        wallet_name = Prompt.ask("Enter your Bittensor wallet name", console=console, show_default=False).strip()
+        access_key = client.get_access_key()
+        w = bt.wallet(wallet_name)
+        sig = w.coldkey.sign(access_key.encode('utf-8')).hex()
+        client.verify_access_key(
+            coldkey=w.coldkeypub.ss58_address,
+            access_key=access_key,
+            signature=sig
+        )
+    funding_wallets = client.get_funding_wallets()
+    funding = funding_wallets[0]['wallet_hash']
+    console.print(styled(f"Your current funds balance is: {user_info['balance']}", 'info'))
+    wallet_name = Prompt.ask("Enter your Bittensor wallet name", console=console, show_default=False).strip()
+    amount = float(Prompt.ask("Enter TAO amount to fund", console=console, show_default=False).strip())
+    old_balace = user_info['balance']
+    bt.subtensor().transfer(
+        wallet = bt.wallet(wallet_name),
+        dest='5FqACMtcegZxxopgu1g7TgyrnyD8skurr9QDPLPhxNQzsThe',
+        amount=amount,
+    )
+    while True:
+        new_user_info = client.get_users_me()
+        new_balance = new_user_info['balance']
+        if new_balance > old_balace:
+            break
+        else:
+            time.sleep(1)
+    console.print(styled(f"Your new funding balance is: {new_balance}", 'info'))
 
 @cli.command(name="init")
 def init_lium():

@@ -25,6 +25,13 @@ lium init
 ![Lium config show](assets/liumconfigshow.png)
 
 ---
+`lium fund` 
+```bash
+# Add balance to your account via TAO
+lium fund
+```
+
+---
 `lium ls` 
 ```bash
 # List all available H100s for rental

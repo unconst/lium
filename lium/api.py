@@ -17,6 +17,62 @@ class LiumAPIClient:
         self.api_key = api_key
         self.base_url = base_url
         self.headers = {"X-API-KEY": api_key}
+        
+    def get_funding_wallets(self) -> List[str]:
+        user = self.get_users_me()
+        url = f"https://pay-api.celiumcompute.ai/wallet/available-wallets/{user['stripe_customer_id']}"
+        headers = {"X-Api-Key": f"admin-test-key"}
+        response = requests.get(url, headers=headers)
+        return response.json()
+        
+    def get_users_me(self) -> Dict:
+        url = "https://celiumcompute.ai//api/users/me"
+        response = requests.get(url, headers=self.headers)
+        return response.json()
+        
+    def get_access_key(self) -> str:
+        """Fetch celium access key
+        
+        Returns:
+            Celium access key.
+            
+        Raises:
+            requests.RequestException: If the API request fails
+        """
+        url = "https://pay-api.celiumcompute.ai/token/generate"
+        headers = {
+            "X-Api-Key": f"admin-test-key"
+        }
+        response = requests.get(url, headers=headers)
+        return response.json()['access_key']
+    
+    def get_app_id(self) -> str:        
+        url = "https://celiumcompute.ai/api/tao/create-transfer"
+        data = {
+            "amount": 10,
+        }
+        response = requests.post(url, json=data, headers=self.headers)
+        api_id = response.json()['url'].split('app_id=')[1].split('&')[0]
+        return api_id
+    
+    def verify_access_key(
+        self, 
+        coldkey: str,
+        access_key: str, 
+        signature: str, 
+    ) -> Dict[str, Any]:
+        url = "https://pay-api.celiumcompute.ai/token/verify"
+        headers = {"X-Api-Key": f"admin-test-key"}
+        user = self.get_users_me()
+        data = {
+            "coldkey_address": coldkey,
+            "access_key": access_key,
+            "signature": signature,
+            "stripe_customer_id": user['stripe_customer_id'],
+            "application_id": self.get_app_id()
+        }
+        response = requests.post(url, headers=headers, json=data)
+        return response
     
     def get_executors(self) -> List[Dict[str, Any]]:
         """Fetch all available executors.
