@@ -22,7 +22,7 @@ lium init
 > Please enter your Lium API key (See: https://celiumcompute.ai/api-keys): ...
 > Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa): ...
 ```
-![Lium init](assets/liumls.png)
+![Lium config show](assets/liumconfigshow.png)
 
 ---
 `lium ls` 
@@ -91,11 +91,11 @@ lium down --all -y
 `lium config`
 ```bash
 # Set your celium API key: (https://celiumcompute.ai/api-keys)
-lium config set api_key <YOUR_API_KEY_HERE> 
+lium config set api.api_key <YOUR_API_KEY_HERE> 
 # Set path to your ssh private key
 lium config set ssh.key_path <PATH_TO_YOUR_SSH_PRIVATE_KEY>
 # Select your default template
-lium config set template.default_id
+lium config set template.default_id 
 # Show your config file in: ~/.lium/config.ini 
 lium config show
 ```
