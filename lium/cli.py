@@ -398,41 +398,52 @@ def cli():
     pass
 
 @cli.command(name="fund")
-def init_lium():
+@click.option("--wallet", help="Bittensor funding wallet")
+@click.option("--tao", help="Amount of tao to fund.")
+def init_lium( wallet:str, tao: str):
     import bittensor as bt
     api_key = get_or_set_api_key()
     client = LiumAPIClient(api_key)
+    funding_wallet = bt.wallet(wallet)
+    coldkey_ss58 = funding_wallet.coldkeypub.ss58_address
+    all_funding_wallets = client.get_funding_wallets()
+    all_keys = [fwalls['wallet_hash'] for fwalls in all_funding_wallets]
+    if coldkey_ss58 not in all_keys:
+        console.print(styled(f"Linking: {coldkey_ss58} with your account ...", 'info'))
+        client.add_wallet(funding_wallet)
+    all_funding_wallets = client.get_funding_wallets()
+    
+    # Wait for update or fail.
+    time.sleep(2)
+    if coldkey_ss58 not in all_keys:
+        console.print(styled(f"Error adding your wallet. Try again later", 'info'))
+        sys.exit()
+            
     user_info = client.get_users_me()
-    funding_wallets = client.get_funding_wallets()
-    if len(funding_wallets) == 0:
-        wallet_name = Prompt.ask("Enter your Bittensor wallet name", console=console, show_default=False).strip()
-        access_key = client.get_access_key()
-        w = bt.wallet(wallet_name)
-        sig = w.coldkey.sign(access_key.encode('utf-8')).hex()
-        client.verify_access_key(
-            coldkey=w.coldkeypub.ss58_address,
-            access_key=access_key,
-            signature=sig
+    old_balance = user_info['balance']
+    amount_tao = bt.Balance.from_tao(float(tao))
+    console.print(styled(f"Current balance: {user_info['balance']}", 'info'))
+    confirm_funding = Prompt.ask(
+        styled(f"Do you want to fund your account with {amount_tao}? (yes/no)", "key"),
+        default="no",
+        console=console
+    ).strip().lower()
+    if confirm_funding.startswith("y"):
+        bt.subtensor().transfer(
+            wallet=bt.wallet(wallet),
+            dest='5FqACMtcegZxxopgu1g7TgyrnyD8skurr9QDPLPhxNQzsThe',
+            amount=amount_tao,
         )
-    funding_wallets = client.get_funding_wallets()
-    funding = funding_wallets[0]['wallet_hash']
-    console.print(styled(f"Your current funds balance is: {user_info['balance']}", 'info'))
-    wallet_name = Prompt.ask("Enter your Bittensor wallet name", console=console, show_default=False).strip()
-    amount = float(Prompt.ask("Enter TAO amount to fund", console=console, show_default=False).strip())
-    old_balace = user_info['balance']
-    bt.subtensor().transfer(
-        wallet = bt.wallet(wallet_name),
-        dest='5FqACMtcegZxxopgu1g7TgyrnyD8skurr9QDPLPhxNQzsThe',
-        amount=amount,
-    )
-    while True:
-        new_user_info = client.get_users_me()
-        new_balance = new_user_info['balance']
-        if new_balance > old_balace:
-            break
-        else:
-            time.sleep(1)
-    console.print(styled(f"Your new funding balance is: {new_balance}", 'info'))
+        while True:
+            new_user_info = client.get_users_me()
+            new_balance = new_user_info['balance']
+            if new_balance > old_balance:
+                break
+            else:
+                time.sleep(1)
+        console.print(styled(f"Your new funding balance is: {new_balance}", 'info'))
+    else:
+        console.print(styled("Funding operation canceled.", "info"))
 
 @cli.command(name="init")
 def init_lium():

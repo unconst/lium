@@ -27,9 +27,10 @@ lium init
 ---
 `lium fund` 
 ```bash
-# Add balance to your account via TAO
-lium fund
+# Add 10 TAO to my current balance.
+lium fund --wallet my_wallet_name --tao 10
 ```
+![Lium fund](assets/liumfund.png)
 
 ---
 `lium ls` 

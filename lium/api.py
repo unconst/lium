@@ -55,6 +55,15 @@ class LiumAPIClient:
         api_id = response.json()['url'].split('app_id=')[1].split('&')[0]
         return api_id
     
+    def add_wallet(self, wallet: 'bt.Wallet'):
+        access_key = self.get_access_key()
+        sig = wallet.coldkey.sign(access_key.encode('utf-8')).hex()
+        self.verify_access_key(
+            coldkey=wallet.coldkeypub.ss58_address,
+            access_key=access_key,
+            signature=sig
+        )
+    
     def verify_access_key(
         self, 
         coldkey: str,
