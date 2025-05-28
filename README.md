@@ -17,10 +17,12 @@ uv pip install -e .
 ---
 `lium init` 
 ```bash
-# Initializes the creation of your config
+# Init lium config
 lium init
+> Please enter your Lium API key (See: https://celiumcompute.ai/api-keys): ...
+> Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa): ...
 ```
-![Lium ls H100](assets/liumls.png)
+![Lium init](assets/liumls.png)
 
 ---
 `lium ls` 

@@ -224,7 +224,7 @@ def get_or_set_ssh_key() -> List[str]:
         if ssh_key_input:
             set_config_value('ssh.key_path', ssh_key_input) # set_config_value handles section/option logic
             set_config_value('ssh.user', 'root') # set_config_value handles section/option logic
-    return get_ssh_public_keys
+    return get_ssh_public_keys()
 
 def get_config_path() -> Path:
     """Returns the path to the configuration file."""

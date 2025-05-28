@@ -777,6 +777,10 @@ def rent_machine(
     ssh_public_keys = get_or_set_ssh_key()
     if not ssh_public_keys: console.print(styled("Error: No SSH public keys found.", "error")); return
     
+    if executor_names_or_ids == None or len(executor_names_or_ids) == 0:
+        console.print( styled('\nUse: `lium ls <GPU>` for get a pod name. (i.e. lium up 4090)\n', 'info'))
+        return
+    
     client = LiumAPIClient(api_key)
     template_id_to_use: Optional[str] = None
     template_name_for_display: str = "Unknown Template"
