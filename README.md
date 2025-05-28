@@ -70,10 +70,9 @@ lium exec cosmic-raven-39 "python --version"
 
 ```bash
 # Starts a jupyter server via script in scripts/
-lium exec cosmic-raven-39 --script scripts/run_jupyter.sh
+lium exec cosmic-raven-39 --script scripts/jupyter.sh
 ```
 ![lium exec](assets/jupyter.png)
-
 
 ---
 `lium ssh`
