@@ -1013,7 +1013,7 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
 @cli.command(name="exec", help="Execute a command or a bash script on a running pod via SSH.")
 @click.argument("pod_name_huid", type=str)
 @click.argument("command_to_run", type=str, required=False)
-@click.option("--bash", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
+@click.option("--script", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], bash_script_path: Optional[str], api_key: Optional[str]):
     """Executes COMMAND_TO_RUN or the content of the bash script on the pod identified by POD_NAME_HUID."""
