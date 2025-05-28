@@ -400,6 +400,7 @@ def cli():
 def init_lium():
     get_or_set_api_key()
     get_or_set_ssh_key()
+    _config_show()
 
 @cli.command(name="ls")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
@@ -628,8 +629,7 @@ def config_unset(key: str):
     else:
         console.print(styled(f"Key '{key}' not found.", "error"))
 
-@config.command(name="show", help="Show the entire configuration.")
-def config_show():
+def _config_show():
     config = load_config_parser() # This loads the INI and triggers migration
     
     if not config.sections() and not config.defaults():
@@ -639,17 +639,6 @@ def config_show():
     # Use a Text object for more control over layout and styling
     output_text = Text()
     first_section = True
-
-    # Print default section items if any, not under a [DEFAULT] header unless explicitly wanted
-    # For now, let's assume default items are rare or implicitly handled by sections.
-    # If we want to show DEFAULT section explicitly:
-    # if config.defaults():
-    #     if not first_section: output_text.append("\n")
-    #     output_text.append(f"[DEFAULT]\n", style="title") # or a different style for DEFAULT
-    #     for key, value in config.defaults().items():
-    #         output_text.append(f"  {key} = ", style="key")
-    #         output_text.append(f"{value}\n", style="value")
-    #     first_section = False
 
     for section_name in config.sections():
         if not first_section:
@@ -676,10 +665,13 @@ def config_show():
     else:
          console.print(styled(f"Configuration file '{get_config_path()}' appears to be empty (after parsing).", "info"))
 
+@config.command(name="show", help="Show the entire configuration.")
+def config_show():
+    _config_show()
+    
 @config.command(name="path", help="Show the path to the configuration file.")
 def config_path():
     console.print(styled(str(get_config_path()), "primary"))
-
 
 @cli.command(name="theme")
 @click.argument("theme_name", type=click.Choice(["mono", "mono-light", "solarized", "solarized-light"], case_sensitive=False))
