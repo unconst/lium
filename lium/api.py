@@ -73,10 +73,9 @@ class LiumAPIClient:
             "template_id": template_id,
             "user_public_key": user_public_keys  # API expects "user_public_key"
         }
-        print (url, payload, self.headers)
-        # response = requests.post(url, headers=self.headers, json=payload)
-        # response.raise_for_status() # Will raise an HTTPError for bad responses (4xx or 5xx)
-        # return response.json()
+        response = requests.post(url, headers=self.headers, json=payload)
+        response.raise_for_status() # Will raise an HTTPError for bad responses (4xx or 5xx)
+        return response.json()
 
     def get_templates(self) -> List[Dict[str, Any]]:
         """Fetch all available templates.
