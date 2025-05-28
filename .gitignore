@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 *.ipynb
+Dockerfile
+upload_to_dockerhub.py
 
 # Distribution / packaging
 .Python

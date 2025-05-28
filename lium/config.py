@@ -10,14 +10,6 @@ CONFIG_DIR = Path.home() / ".lium"
 JSON_CONFIG_FILE = CONFIG_DIR / "config.json"
 INI_CONFIG_FILE = CONFIG_DIR / "config.ini"
 
-# Define default structure and known keys to help with validation/suggestions later
-DEFAULT_CONFIG_STRUCTURE = {
-    "api_key": None,
-    "ssh": {
-        "key_path": None,
-        "user": "root" # Example of a future nested key
-    },
-}
 
 def _ensure_config_dir_exists() -> None:
     """Ensures the ~/.lium directory exists."""

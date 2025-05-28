@@ -1010,12 +1010,39 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
     elif not pods_to_terminate_info and not unresolved_huids : console.print(styled("No action taken.", "info")) # Check unresolved_huids
 
 
-@cli.command(name="exec", help="Execute a command on a running pod via SSH.")
+@cli.command(name="exec", help="Execute a command or a bash script on a running pod via SSH.")
 @click.argument("pod_name_huid", type=str)
-@click.argument("command_to_run", type=str)
+@click.argument("command_to_run", type=str, required=False)
+@click.option("--bash", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
-def execute_command_on_pod(pod_name_huid: str, command_to_run: str, api_key: Optional[str]):
-    """Executes COMMAND_TO_RUN on the pod identified by POD_NAME_HUID."""
+def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], bash_script_path: Optional[str], api_key: Optional[str]):
+    """Executes COMMAND_TO_RUN or the content of the bash script on the pod identified by POD_NAME_HUID."""
+    if not command_to_run and not bash_script_path:
+        console.print(styled("Error: Either COMMAND_TO_RUN or --bash <script_path> must be provided.", "error"))
+        return
+    if command_to_run and bash_script_path:
+        console.print(styled("Error: Cannot provide both COMMAND_TO_RUN and --bash <script_path>.", "error"))
+        return
+
+    final_command_to_run = ""
+    operation_description = ""
+
+    if bash_script_path:
+        try:
+            with open(bash_script_path, 'r') as f:
+                final_command_to_run = f.read()
+            operation_description = f"script '{bash_script_path}'"
+        except Exception as e:
+            console.print(styled(f"Error reading bash script '{bash_script_path}': {str(e)}", "error"))
+            return
+    elif command_to_run: # Ensure command_to_run is not None, though previous checks should cover this.
+        final_command_to_run = command_to_run
+        operation_description = f"command: {final_command_to_run}"
+
+    if not final_command_to_run: # Should ideally not be reached if initial checks are correct
+        console.print(styled("Error: No command or script content to execute.", "error"))
+        return
+
     if not api_key: api_key = get_api_key()
     if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
 
@@ -1076,7 +1103,7 @@ def execute_command_on_pod(pod_name_huid: str, command_to_run: str, api_key: Opt
         console.print(styled(f"Error parsing SSH command '{ssh_connect_cmd_str}': {str(e)}", "error"))
         return
 
-    console.print(styled(f"Connecting to '{pod_name_huid}' ({host}:{port} as {user}) to run: {command_to_run}", "info"))
+    console.print(styled(f"Connecting to '{pod_name_huid}' ({host}:{port} as {user}) to run {operation_description}", "info"))
 
     ssh_client = None
     try:
@@ -1104,7 +1131,7 @@ def execute_command_on_pod(pod_name_huid: str, command_to_run: str, api_key: Opt
 
         ssh_client.connect(hostname=host, port=port, username=user, pkey=loaded_key, timeout=10)
         
-        stdin, stdout, stderr = ssh_client.exec_command(command_to_run, get_pty=True)
+        stdin, stdout, stderr = ssh_client.exec_command(final_command_to_run, get_pty=True)
         
         # Stream output
         while not stdout.channel.exit_status_ready():
