@@ -1,6 +1,7 @@
 """Configuration management for Lium CLI using an INI file."""
 
 import os
+import sys
 import configparser
 from pathlib import Path
 from rich.console import Console
@@ -214,8 +215,8 @@ def get_ssh_public_keys() -> List[str]:
     return public_keys
 
 def get_or_set_ssh_key() -> List[str]:
-    private_key_path_str = get_config_value("ssh.key_path")
-    if private_key_path_str == None:
+    pubs = get_ssh_public_keys()
+    if pubs == None or len(pubs) == 0:
         # This import is local to avoid circular dependencies if config is imported early
         ssh_key_input = Prompt.ask(
             styled("Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa)", "info")
@@ -224,6 +225,10 @@ def get_or_set_ssh_key() -> List[str]:
         if ssh_key_input:
             set_config_value('ssh.key_path', ssh_key_input) # set_config_value handles section/option logic
             set_config_value('ssh.user', 'root') # set_config_value handles section/option logic
+        pubs = get_ssh_public_keys()
+        if not pubs:
+            console.print(styled(f'Key path: {ssh_key_input}.pub does not exist or is badly formatted.', 'info'))
+            sys.exit()
     return get_ssh_public_keys()
 
 def get_config_path() -> Path:

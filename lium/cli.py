@@ -400,6 +400,7 @@ def cli():
 def init_lium():
     get_or_set_api_key()
     get_or_set_ssh_key()
+    console.print(styled('\nShowing config in ~/.lium/config.ini', 'info'))
     _config_show()
 
 @cli.command(name="ls")
