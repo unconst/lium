@@ -24,6 +24,7 @@ from pathlib import Path
 import subprocess
 import shutil # To check if ssh command exists
 
+from .docker import build_docker_image
 from .api import LiumAPIClient
 from .config import (
     get_or_set_ssh_key,
@@ -396,6 +397,41 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
 def cli():
     """Lium CLI - Manage compute executors."""
     pass
+
+@cli.command(name="image")
+@click.argument("image_name", required=True, type=str)
+@click.argument("path", required=True, type=str)
+def image_create(image_name:str, path:str):
+    api_key = get_or_set_api_key()
+    client = LiumAPIClient(api_key)
+    digest = build_docker_image(image_name, path)
+    client.post_image(
+        image_name=image_name,
+        digest=digest,
+        tag='latest'
+    )
+    exists = False
+    templates = client.get_templates()
+    for temp in templates:
+        if temp['docker_image_digest'] == digest:
+            exists = True
+    if not exists:
+        console.print(styled('Failed to upload image to Celium, try again later.', "info"))
+        exit(1)
+    start = time.time()
+    while True:
+        templates = client.get_templates()
+        for temp in templates:
+            if temp['docker_image_digest'] == digest:
+                break
+        if temp['status'] == 'VERIFY_SUCCESS':
+            console.print(styled(f"Image is verified.\nUse it lium up <pod> --image {temp['id']}", "info"))
+            break
+        else:
+            console.print(styled(f"Status: {temp['docker_image_digest']}, Elapsed: {int(time.time() - start)}s ", "info"))
+            time.sleep(10)
+            continue
+
 
 @cli.command(name="fund")
 @click.option("--wallet", required=False, help="Bittensor funding wallet")
@@ -815,7 +851,7 @@ def select_template_interactively(client: LiumAPIClient, skip_prompts: bool = Fa
 @cli.command(name="up", help="Rent pod(s) on executor(s) specified by Name (Executor HUID/UUID).")
 @click.argument("executor_names_or_ids", type=str, nargs=-1)
 @click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names. If single executor, this is the exact pod name.")
-@click.option("--template-id", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
+@click.option("--image", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
 @click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations. Uses configured/default template if --template-id is not set.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def rent_machine(

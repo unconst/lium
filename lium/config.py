@@ -6,7 +6,7 @@ import configparser
 from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt 
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Tuple
 import json
 from .styles import styled, get_theme
 
@@ -230,6 +230,19 @@ def get_or_set_ssh_key() -> List[str]:
             console.print(styled(f'Key path: {ssh_key_input}.pub does not exist or is badly formatted.', 'info'))
             sys.exit()
     return get_ssh_public_keys()
+
+def get_docker_credentials() -> Tuple[Optional[str],Optional[str]]:
+    return get_config_value("docker.username"), get_config_value("docker.password")
+
+def get_or_set_docker_credentials() -> Tuple[str,str]:
+    user, pswd = get_docker_credentials()
+    if user == None:
+        docker_user = Prompt.ask(styled("Please enter your docker username (i.e.: const123)", "info"))
+        set_config_value('docker.username', docker_user) # set_config_value handles section/option logic
+    if pswd == None:
+        docker_pwsd = Prompt.ask(styled("Please enter your docker access token (i.e.: dckr_pat_FUDINADNKSLvJZVMEdCLDMqa1FCIE)", "info"))
+        set_config_value('docker.password', docker_pwsd) # set_config_value handles section/option logic
+    return get_docker_credentials()    
 
 def get_config_path() -> Path:
     """Returns the path to the configuration file."""

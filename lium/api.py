@@ -138,7 +138,6 @@ class LiumAPIClient:
             "template_id": template_id,
             "user_public_key": user_public_keys  # API expects "user_public_key"
         }
-        print (url, payload)
         response = requests.post(url, headers=self.headers, json=payload)
         response.raise_for_status() # Will raise an HTTPError for bad responses (4xx or 5xx)
         return response.json()
@@ -176,3 +175,32 @@ class LiumAPIClient:
         response = requests.delete(url, headers=self.headers)
         response.raise_for_status() 
         return response.json() 
+    
+    def post_image(self, image_name:str, digest: str, tag: str = 'latest'):
+        url = "https://celiumcompute.ai/api/templates"
+        data = {
+            "category": "UBUNTU",
+            "container_start_immediately": True,
+            "description": image_name,
+            "docker_image": image_name,
+            "docker_image_digest": digest,
+            "docker_image_tag": tag,
+            "entrypoint": "",
+            "environment": {
+                "test_env": "44"
+            },
+            "internal_ports": [
+                22, 
+                8002
+            ],
+            "is_private": False,
+            "name": image_name,
+            "readme": image_name,
+            "volumes": [],
+            "startup_commands": ""
+        }
+        response = requests.post(url, headers=self.headers, json=data)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
