@@ -98,6 +98,22 @@ lium down --all -y
 ![lium down](assets/liumdown.png)
 
 ---
+`lium image`
+```bash
+# Build a custom image from local Dockerfile 
+lium image my_image .
+# Use it lium up <pod> --image 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
+
+# Set this image as your default
+lium config set template.default_id 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
+
+# Or use it directly
+lium up golden-pixel-2f --image 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
+```
+![Lium image](assets/liumimage.png)
+> NOTE: Dockerfiles **MUST** be based off of Datura offical images (i.e. FROM daturaai/dind:0.0.0 )
+
+---
 `lium config`
 ```bash
 # Set your celium API key: (https://celiumcompute.ai/api-keys)
