@@ -398,9 +398,20 @@ def cli():
     pass
 
 @cli.command(name="fund")
-@click.option("--wallet", help="Bittensor funding wallet")
+@click.option("--wallet", required=False, help="Bittensor funding wallet")
 @click.option("--tao", help="Amount of tao to fund.")
-def init_lium( wallet:str, tao: str):
+def init_lium( wallet:str = None, tao: str = None):
+    if wallet is None:
+        wallet = Prompt.ask(
+            styled(f"Enter your wallet anme", "key"),
+            default="default",
+            console=console
+        ).strip().lower()
+    if tao is None:
+        tao = Prompt.ask(
+            styled(f"Enter tao amount", "key"),
+            console=console
+        ).strip().lower()
     import bittensor as bt
     api_key = get_or_set_api_key()
     client = LiumAPIClient(api_key)
