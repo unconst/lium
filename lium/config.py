@@ -5,7 +5,7 @@ import sys
 import configparser
 from pathlib import Path
 from rich.console import Console
-from rich.prompt import Prompt 
+from rich.prompt import Prompt
 from typing import Optional, Any, Dict, List, Tuple
 import json
 from .styles import styled, get_theme
@@ -33,7 +33,7 @@ def _migrate_json_to_ini_if_needed():
         config = configparser.ConfigParser()
         migrated_something = False
         for key, value in old_config_data.items():
-            if isinstance(value, dict): 
+            if isinstance(value, dict):
                 if key not in config: config.add_section(key) # Ensure section exists
                 for sub_key, sub_value in value.items():
                     if sub_value is not None: config[key][sub_key] = str(sub_value); migrated_something = True
@@ -45,17 +45,17 @@ def _migrate_json_to_ini_if_needed():
                 # Put other top-level keys into [default] or a specific section if preferred.
                 # For simplicity, let's assume most other top-level keys from old JSON might be less critical
                 # or would need explicit mapping. For now, only api_key gets special section treatment.
-                # else: 
+                # else:
                 #     if 'DEFAULT' not in config: config['DEFAULT'] = {}
                 #     if value is not None: config['DEFAULT'][key] = str(value); migrated_something = True
-       
+
         # Always write an INI file if JSON existed and INI didn't, even if JSON was empty/corrupt
         try:
             with open(INI_CONFIG_FILE, "w") as f_ini:
                 config.write(f_ini)
-            # if migrated_something: 
+            # if migrated_something:
             #    console.print("Config migrated to INI. Old JSON can be removed.", err=True)
-            # else: 
+            # else:
             #    console.print("Old JSON config found but was empty or unmigratable. Fresh INI created.", err=True)
             # JSON_CONFIG_FILE.rename(JSON_CONFIG_FILE.with_suffix('.json.migrated')) # Optional: auto-rename old file
         except Exception as e:
@@ -96,7 +96,7 @@ def get_config_value(key: str) -> Optional[str]:
             section, option = "api", "api_key"
         else: # Fallback to DEFAULT for other direct keys
             section, option = "DEFAULT", key
-    
+
     value = None
     if config.has_option(section, option):
         value = config.get(section, option)
@@ -109,21 +109,21 @@ def get_config_value(key: str) -> Optional[str]:
 def set_config_value(key: str, value: Any) -> None:
     """Sets a value in the INI configuration.
     Dot notation 'section.option' is used for key.
-    If no section is provided, it writes to the 'DEFAULT' section 
+    If no section is provided, it writes to the 'DEFAULT' section
     (or a specific section like 'api' for 'api_key').
     """
     config = load_config_parser()
     if '.' in key:
         section, option = key.split('.', 1)
     else:
-        if key == "api_key": 
+        if key == "api_key":
             section, option = "api", "api_key"
         else:
             section, option = "DEFAULT", key
 
     if not config.has_section(section) and section != 'DEFAULT':
         config.add_section(section)
-    
+
     config.set(section, option, str(value)) # All INI values are strings
     save_config_parser(config)
 
@@ -135,11 +135,11 @@ def unset_config_value(key: str) -> bool:
     if '.' in key:
         section, option = key.split('.', 1)
     else:
-        if key == "api_key": 
+        if key == "api_key":
             section, option = "api", "api_key"
         else:
             section, option = "DEFAULT", key
-            
+
     if config.has_option(section, option):
         config.remove_option(section, option)
         # If section becomes empty (and not DEFAULT), remove it
@@ -167,29 +167,25 @@ def get_or_set_api_key() -> Optional[str]:
 
 def get_ssh_public_keys() -> List[str]:
     """Reads SSH public key(s).
-    It assumes ssh.key_path in config points to the PRIVATE key.
-    It will attempt to find the corresponding .pub file.
-    If ssh.key_path itself ends with .pub, it will try to read that directly.
-    
+    It assumes ssh.key_path in config points to the PUBLIC key.
+
     Returns:
         A list of public key strings, or an empty list if not found or error.
     """
-    private_key_path_str = get_config_value("ssh.key_path")
-    if not private_key_path_str:
+    public_key_path_str = get_config_value("ssh.key_path")
+    if not public_key_path_str:
         # console.print(styled("ssh.key_path not set in config.", "warning")) # Optional user feedback
         return []
 
     # Determine the public key path
     # Path objects are easier to manipulate for this.
-    resolved_private_key_path = Path(private_key_path_str).expanduser()
+    resolved_public_key_path = Path(public_key_path_str).expanduser()
     public_key_path_to_try: Optional[Path] = None
 
-    if private_key_path_str.endswith(".pub"):
-        # User might have directly configured the .pub file path
-        public_key_path_to_try = resolved_private_key_path
-    else:
-        # Assume private_key_path_str is the private key, try to find corresponding .pub
-        public_key_path_to_try = resolved_private_key_path.with_suffix(".pub")
+    if resolved_public_key_path.suffix != ".pub":
+        console.print(styled(f"ssh.key_path must end with .pub: {public_key_path_str}", "error"))
+
+    public_key_path_to_try = resolved_public_key_path
 
     public_keys: List[str] = []
     if public_key_path_to_try and public_key_path_to_try.exists() and public_key_path_to_try.is_file():
@@ -210,8 +206,8 @@ def get_ssh_public_keys() -> List[str]:
         # console.print(styled(f"Public key file not found at {public_key_path_to_try} (derived from ssh.key_path: {private_key_path_str})", "warning"))
         # If .pub doesn't exist, and the original path wasn't a .pub file, then we have no public key to return.
         # If the original path *was* a .pub file but didn't exist, it's also an error handled here.
-        pass 
-        
+        pass
+
     return public_keys
 
 def get_or_set_ssh_key() -> List[str]:
@@ -219,7 +215,7 @@ def get_or_set_ssh_key() -> List[str]:
     if pubs == None or len(pubs) == 0:
         # This import is local to avoid circular dependencies if config is imported early
         ssh_key_input = Prompt.ask(
-            styled("Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa)", "info")
+            styled("Please enter the path to your ssh public key (i.e.: ~/.ssh/id_rsa.pub)", "info")
         )
         ssh_key_input = os.path.expanduser(ssh_key_input)
         if ssh_key_input:
@@ -227,7 +223,7 @@ def get_or_set_ssh_key() -> List[str]:
             set_config_value('ssh.user', 'root') # set_config_value handles section/option logic
         pubs = get_ssh_public_keys()
         if not pubs:
-            console.print(styled(f'Key path: {ssh_key_input}.pub does not exist or is badly formatted.', 'info'))
+            console.print(styled(f'Key path: {ssh_key_input} does not exist or is badly formatted.', 'info'))
             sys.exit()
     return get_ssh_public_keys()
 
@@ -242,8 +238,8 @@ def get_or_set_docker_credentials() -> Tuple[str,str]:
     if pswd == None:
         docker_pwsd = Prompt.ask(styled("Please enter your docker access token (i.e.: dckr_pat_FUDINADNKSLvJZVMEdCLDMqa1FCIE)", "info"))
         set_config_value('docker.password', docker_pwsd) # set_config_value handles section/option logic
-    return get_docker_credentials()    
+    return get_docker_credentials()
 
 def get_config_path() -> Path:
     """Returns the path to the configuration file."""
-    return INI_CONFIG_FILE 
+    return INI_CONFIG_FILE
