@@ -66,6 +66,12 @@ lium ps
 ```bash
 # Executes python --version command on cosmic-raven-39
 lium exec cosmic-raven-39 "python --version"
+
+# Execute with environment variables
+lium exec cosmic-raven-39 --env MY_VAR=value --env PATH=/custom:$PATH "python script.py"
+
+# Multiple environment variables for a script
+lium exec cosmic-raven-39 --env API_KEY=secret --env DEBUG=true --script scripts/app.sh
 ```
 ![lium exec](assets/liumexec.png)
 

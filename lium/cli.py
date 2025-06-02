@@ -1111,30 +1111,64 @@ def down_pod(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip_con
 @click.argument("pod_name_huid", type=str)
 @click.argument("command_to_run", type=str, required=False)
 @click.option("--script", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
+@click.option("--env", "env_vars", multiple=True, help="Environment variables to set (format: KEY=VALUE). Can be used multiple times.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
-def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], bash_script_path: Optional[str], api_key: Optional[str]):
-    """Executes COMMAND_TO_RUN or the content of the bash script on the pod identified by POD_NAME_HUID."""
+def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], bash_script_path: Optional[str], env_vars: Tuple[str, ...], api_key: Optional[str]):
+    """Executes COMMAND_TO_RUN or the content of the bash script on the pod identified by POD_NAME_HUID.
+    
+    Environment variables can be set using --env KEY=VALUE (can be used multiple times).
+    Example: lium exec pod-name --env MY_VAR=value --env PATH=/custom:$PATH "python script.py"
+    """
     if not command_to_run and not bash_script_path:
-        console.print(styled("Error: Either COMMAND_TO_RUN or --bash <script_path> must be provided.", "error"))
+        console.print(styled("Error: Either COMMAND_TO_RUN or --script <script_path> must be provided.", "error"))
         return
     if command_to_run and bash_script_path:
-        console.print(styled("Error: Cannot provide both COMMAND_TO_RUN and --bash <script_path>.", "error"))
+        console.print(styled("Error: Cannot provide both COMMAND_TO_RUN and --script <script_path>.", "error"))
         return
 
     final_command_to_run = ""
     operation_description = ""
+    
+    # Parse and validate environment variables
+    env_dict = {}
+    if env_vars:
+        for env_var in env_vars:
+            if '=' not in env_var:
+                console.print(styled(f"Error: Invalid environment variable format '{env_var}'. Expected format: KEY=VALUE", "error"))
+                return
+            key, value = env_var.split('=', 1)  # Split only on first '=' to allow '=' in values
+            if not key:
+                console.print(styled(f"Error: Empty key in environment variable '{env_var}'", "error"))
+                return
+            env_dict[key] = value
 
     if bash_script_path:
         try:
             with open(bash_script_path, 'r') as f:
-                final_command_to_run = f.read()
+                script_content = f.read()
             operation_description = f"script '{bash_script_path}'"
+            # For scripts, prepend environment variable exports
+            if env_dict:
+                env_exports = '\n'.join([f'export {key}="{value}"' for key, value in env_dict.items()])
+                final_command_to_run = f"{env_exports}\n{script_content}"
+            else:
+                final_command_to_run = script_content
         except Exception as e:
             console.print(styled(f"Error reading bash script '{bash_script_path}': {str(e)}", "error"))
             return
     elif command_to_run: # Ensure command_to_run is not None, though previous checks should cover this.
-        final_command_to_run = command_to_run
-        operation_description = f"command: {final_command_to_run}"
+        operation_description = f"command: {command_to_run}"
+        # For direct commands, prepend environment variable exports
+        if env_dict:
+            env_exports = ' && '.join([f'export {key}="{value}"' for key, value in env_dict.items()])
+            final_command_to_run = f"{env_exports} && {command_to_run}"
+        else:
+            final_command_to_run = command_to_run
+        
+        # Add env vars to operation description if present
+        if env_dict:
+            env_str = ', '.join([f'{k}={v}' for k, v in env_dict.items()])
+            operation_description = f"command with env [{env_str}]: {command_to_run}"
 
     if not final_command_to_run: # Should ideally not be reached if initial checks are correct
         console.print(styled("Error: No command or script content to execute.", "error"))
