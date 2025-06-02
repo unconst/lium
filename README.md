@@ -8,8 +8,11 @@ Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 ### Install 
 Make sure you have uv and Python 3.10+ installed.
 ```bash
-# Load env for lium
-git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/bin/activate
+# Clone this repo
+git clone git@github.com:unconst/lium.git
+cd lium
+uv venv 
+source .venv/bin/activate
 # Install lium from source
 uv pip install -e .
 ```
