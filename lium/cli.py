@@ -1,5 +1,6 @@
 """Main CLI entry point for Lium."""
 
+import os
 import time
 import click
 from rich.console import Console
@@ -1395,6 +1396,211 @@ def ssh_to_pod(pod_name_huid: str, api_key: Optional[str]):
     except Exception as e:
         console.print(styled(f"Error executing SSH command: {str(e)}", "error"))
 
+@cli.command(name="scp", help="Copy a local file to a running pod.")
+@click.argument("pod_name_huid", type=str)
+@click.argument("local_path_str", type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.argument("remote_path_str", type=str, required=False)
+@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+def scp_to_pod(
+    pod_name_huid: str,
+    local_path_str: str,
+    remote_path_str: Optional[str],
+    api_key: Optional[str],
+):
+    """
+    Copies LOCAL_PATH_STR to REMOTE_PATH_STR on pod POD_NAME_HUID.
+
+    If REMOTE_PATH_STR is omitted we copy the file into the pod user’s $HOME,
+    preserving only the filename (no host-side directories).  This prevents
+    unwanted paths like /Users/<you>/… appearing on the pod.
+    """
+    # --------------------------------------------------------------------- #
+    # 0.  tiny utilities
+    # --------------------------------------------------------------------- #
+    def q_remote(p: str) -> str:
+        """Quote for remote shell – keep ~ unquoted so it expands to $HOME."""
+        return p if p.startswith("~") else shlex.quote(p)
+
+    # --------------------------------------------------------------------- #
+    # 1.  sanity checks (unchanged)
+    # --------------------------------------------------------------------- #
+    if not shutil.which("scp"):
+        console.print(
+            styled(
+                "Error: 'scp' command not found in your system PATH. "
+                "Please install an SCP client (usually part of OpenSSH).",
+                "error",
+            )
+        )
+        return
+    if not api_key:
+        api_key = get_or_set_api_key()
+    if not api_key:
+        console.print(styled("Error:", "error") + styled(" No API key found.", "primary"))
+        return
+
+    private_key_path_config_str = get_config_value("ssh.key_path")
+    if not private_key_path_config_str:
+        console.print(
+            styled(
+                "Error: SSH private key path not configured. "
+                "Use 'lium config set ssh.key_path /path/to/your/private_key'",
+                "error",
+            )
+        )
+        return
+    private_key_path = Path(private_key_path_config_str.rstrip(".pub")).expanduser()
+    if not private_key_path.exists():
+        console.print(
+            styled(f"Error: Configured SSH private key not found at '{private_key_path}'", "error")
+        )
+        return
+
+    # --------------------------------------------------------------------- #
+    # 2.  expand local file – *only* keep the filename for default dest
+    # --------------------------------------------------------------------- #
+    local_file_path = Path(local_path_str).expanduser().resolve()
+    if not local_file_path.is_file():
+        console.print(styled(f"Error: '{local_file_path}' is not a file", "error"))
+        return
+
+    # Decide where it will land on the pod
+    if remote_path_str:
+        # user overrode default – respect it verbatim (keep leading ~)
+        remote_path_str = remote_path_str
+    else:
+        # Build a path relative to the caller’s $HOME if possible
+        home = Path.home().resolve()
+        try:
+            rel = local_file_path.relative_to(home)
+            # e.g. .bittensor/wallets/kant/coldkeypub.txt
+            remote_path_str = f"~/{rel.as_posix()}"
+        except ValueError:
+            # outside $HOME – fall back to just the filename
+            remote_path_str = f"~/{local_file_path.name}"
+
+    # Directory on the pod that must exist
+    remote_dir = os.path.dirname(remote_path_str)
+    # ``remote_dir`` will be '' when user passed simply '~' or just a filename.
+    needs_mkdir = bool(remote_dir and remote_dir not in ("~", "."))
+
+    # --------------------------------------------------------------------- #
+    # 3.  fetch pod connection details (unchanged except minor refactor)
+    # --------------------------------------------------------------------- #
+    client = LiumAPIClient(api_key)
+    try:
+        target_pod_info = next(
+            (p for p in client.get_pods() or [] if generate_human_id(p.get("id", "")).lower() == pod_name_huid.lower()),
+            None,
+        )
+    except Exception as e:
+        console.print(styled(f"Error fetching active pods: {e}", "error"))
+        return
+    if not target_pod_info:
+        console.print(
+            styled(f"Error: Pod with Name (HUID) '{pod_name_huid}' not found or not active.", "error")
+        )
+        return
+
+    ssh_connect_cmd_str = target_pod_info.get("ssh_connect_cmd")
+    if not ssh_connect_cmd_str:
+        console.print(
+            styled(
+                f"Error: Pod '{pod_name_huid}' has no SSH connection command available "
+                "(it might not be fully RUNNING).",
+                "error",
+            )
+        )
+        return
+
+    # --------------------------------------------------------------------- #
+    # 4.  decompose the ssh command so we can re-use host / port / -o options
+    # --------------------------------------------------------------------- #
+    try:
+        original_parts = shlex.split(ssh_connect_cmd_str)
+        if original_parts[0].lower() != "ssh":
+            raise ValueError("Not a valid ssh command string from pod info.")
+
+        user, host = original_parts[1].split("@", 1)
+        port = "22"
+        other_ssh_options = []
+        i = 2
+        while i < len(original_parts):
+            if original_parts[i] == "-p" and i + 1 < len(original_parts):
+                port = original_parts[i + 1]
+                i += 2
+            elif original_parts[i] == "-o" and i + 1 < len(original_parts):
+                other_ssh_options.extend(original_parts[i : i + 2])
+                i += 2
+            else:
+                other_ssh_options.append(original_parts[i])
+                i += 1
+    except Exception as e:
+        console.print(
+            styled(
+                f"Error parsing pod's SSH connection command ('{ssh_connect_cmd_str}'): {e}",
+                "error",
+            )
+        )
+        return
+
+    # --------------------------------------------------------------------- #
+    # 5.  ensure remote directory exists (if needed)
+    # --------------------------------------------------------------------- #
+    if needs_mkdir:
+        mkdir_cmd = [
+            "ssh",
+            "-i",
+            str(private_key_path),
+            "-p",
+            port,
+            *other_ssh_options,
+            f"{user}@{host}",
+            f"mkdir -p {q_remote(remote_dir)}",
+        ]
+        console.print(styled(f"Ensuring remote directory '{remote_dir}' exists on '{pod_name_huid}'…", "info"))
+        try:
+            subprocess.run(mkdir_cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            console.print(styled(f"Error creating remote directory '{remote_dir}': {e.stderr}", "error"))
+            return
+
+    # --------------------------------------------------------------------- #
+    # 6.  construct and run scp
+    # --------------------------------------------------------------------- #
+    scp_cmd = [
+        "scp",
+        "-i",
+        str(private_key_path),
+        "-P",
+        port,
+        *other_ssh_options,
+        str(local_file_path),
+        f"{user}@{host}:{remote_path_str}",
+    ]
+
+    console.print(styled(f"Copying to pod '{pod_name_huid}':", "info"))
+    console.print(styled("  " + " ".join(shlex.quote(p) for p in scp_cmd), "dim"))
+
+    try:
+        proc = subprocess.run(scp_cmd, capture_output=True, text=True)
+        if proc.returncode == 0:
+            console.print(
+                styled(
+                    f"✅  {local_file_path.name} → {pod_name_huid}:{remote_path_str}",
+                    "success",
+                )
+            )
+        else:
+            console.print(
+                styled(f"Error during scp operation (exit code {proc.returncode}):", "error")
+            )
+            if proc.stdout:
+                console.print(styled("STDOUT:\n" + proc.stdout, "dim"))
+            if proc.stderr:
+                console.print(styled("STDERR:\n" + proc.stderr, "dim"))
+    except Exception as e:
+        console.print(styled(f"Error executing scp command: {e}", "error"))
 
 # Add the config command group to the main cli group
 cli.add_command(config)

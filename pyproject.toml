@@ -10,7 +10,9 @@ dependencies = [
     "requests>=2.31.0",
     "paramiko>=3.0.0",
     "bittensor",
+    "docker",
     "docker-py",
+    "docker-pycreds"
 ]
 
 [project.scripts]

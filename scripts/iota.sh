@@ -47,22 +47,16 @@ uv pip install --upgrade pip
 # Install IOTA requirements.
 uv sync
 
-# Make Bittensor wallet coldkey.
-btcli wallet regen-coldkeypub --overwrite --wallet.name IOTA  --wallet.path ~/.bittensor/wallets/ --ss58-address $COLDKEY_ADDRESS
-
-# Regen the hotkey
-btcli wallet regen-hotkey --wallet.name IOTA --wallet.hotkey IOTA --overwrite --mnemonic "$HOTKEY_MNEMONIC"
-
 if [ ! -f .env ]; then
     echo "Creating .env file with default configurations..."
     cat <<EOL > .env
-wallet_name="IOTA"
-MINER_HOTKEYS="IOTA" 
+wallet_name="${COLD}"
+MINER_HOTKEYS="${HOT}" 
 netuid=9
 network="finney"
 MOCK=False
 BITTENSOR=True
-HF_TOKEN="${HF_TOKEN}"
+HF_TOKEN="${HF}"
 ORCHESTRATOR_HOST="iota.api.macrocosmos.ai"
 ORCHESTRATOR_PORT=443
 ORCHESTRATOR_SCHEME=https
