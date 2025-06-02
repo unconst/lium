@@ -1398,8 +1398,8 @@ def ssh_to_pod(pod_name_huid: str, api_key: Optional[str]):
 
 @cli.command(name="scp", help="Copy a local file to a running pod.")
 @click.argument("pod_name_huid", type=str)
-@click.argument("local_path_str", type=click.Path(exists=True, dir_okay=False, readable=True, required=False))
-@click.argument("remote_path_str", type=click.Path(exists=True, dir_okay=False, readable=True, required=False))
+@click.argument("local_path_str", type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.argument("remote_path_str", type=click.Path(dir_okay=False, writable=True))
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def scp_to_pod(
     pod_name_huid: str,
