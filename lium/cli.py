@@ -1143,7 +1143,7 @@ def execute_command_on_pod(pod_name_huid: str, command_to_run: Optional[str], ba
     if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
 
-    ssh_key_path_str = get_config_value("ssh.key_path")
+    ssh_key_path_str = get_config_value("ssh.key_path").rstrip('.pub')
     if not ssh_key_path_str:
         console.print(styled("Error: SSH key path not configured. Use 'lium config set ssh.key_path /path/to/your/private_key'", "error"))
         return
@@ -1277,7 +1277,7 @@ def ssh_to_pod(pod_name_huid: str, api_key: Optional[str]):
     if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
 
-    private_key_path_str = get_config_value("ssh.key_path")
+    private_key_path_str = get_config_value("ssh.key_path").rstrip('.pub')
     if not private_key_path_str:
         console.print(styled("Error: SSH private key path not configured. Use 'lium config set ssh.key_path /path/to/your/private_key'", "error"))
         return
