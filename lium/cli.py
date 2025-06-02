@@ -1398,13 +1398,32 @@ def ssh_to_pod(pod_name_huid: str, api_key: Optional[str]):
 
 @cli.command(name="scp", help="Copy a local file to a running pod.")
 @click.argument("pod_name_huid", type=str)
-@click.argument("local_path_str", type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.argument(
+    "local_path_str",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    required=False,   # ← now optional when --coldkey/--hotkey are used
+)
 @click.argument("remote_path_str", type=str, required=False)
+@click.option(
+    "--coldkey",
+    type=str,
+    help="Cold-wallet name (e.g. `kant`).  Copies "
+         "`~/.bittensor/wallets/<coldkey>/coldkeypub.txt`.",
+)
+@click.option(
+    "--hotkey",
+    type=str,
+    help="Hot-key filename inside the given cold wallet "
+         "(`~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>`). "
+         "Requires --coldkey.",
+)
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def scp_to_pod(
     pod_name_huid: str,
-    local_path_str: str,
+    local_path_str: Optional[str],
     remote_path_str: Optional[str],
+    coldkey: Optional[str],
+    hotkey: Optional[str],
     api_key: Optional[str],
 ):
     """
@@ -1456,33 +1475,63 @@ def scp_to_pod(
         )
         return
 
-    # --------------------------------------------------------------------- #
-    # 2.  expand local file – *only* keep the filename for default dest
-    # --------------------------------------------------------------------- #
-    local_file_path = Path(local_path_str).expanduser().resolve()
-    if not local_file_path.is_file():
-        console.print(styled(f"Error: '{local_file_path}' is not a file", "error"))
+    # ------------------------------------------------------------------ #
+    # 2.a Collect *all* local files that need copying
+    # ------------------------------------------------------------------ #
+    local_files: list[Path] = []
+
+    # (i) CLI-provided path (the old behaviour)
+    if local_path_str:
+        lp = Path(local_path_str).expanduser().resolve()
+        if not lp.is_file():
+            console.print(styled(f"Error: '{lp}' is not a file", "error"))
+            return
+        local_files.append(lp)
+
+    # (ii) wallet-derived paths (new behaviour)
+    if coldkey:
+        bt_root = Path.home() / ".bittensor" / "wallets" / coldkey
+        ck_pub = bt_root / "coldkeypub.txt"
+        if not ck_pub.exists():
+            console.print(styled(f"Error: '{ck_pub}' not found", "error")); return
+        local_files.append(ck_pub.resolve())
+
+        if hotkey:
+            hk_path = bt_root / "hotkeys" / hotkey
+            if not hk_path.exists():
+                console.print(styled(f"Error: '{hk_path}' not found", "error")); return
+            local_files.append(hk_path.resolve())
+    elif hotkey:
+        console.print(styled("--hotkey requires --coldkey", "error")); return
+
+    if not local_files:
+        console.print(
+            styled("Error:", "error")
+            + styled(
+                " You must supply either LOCAL_PATH_STR or --coldkey/--hotkey.",
+                "primary",
+            )
+        )
         return
 
-    # Decide where it will land on the pod
-    if remote_path_str:
-        # user overrode default – respect it verbatim (keep leading ~)
-        remote_path_str = remote_path_str
-    else:
-        # Build a path relative to the caller’s $HOME if possible
-        home = Path.home().resolve()
-        try:
-            rel = local_file_path.relative_to(home)
-            # e.g. .bittensor/wallets/kant/coldkeypub.txt
-            remote_path_str = f"~/{rel.as_posix()}"
-        except ValueError:
-            # outside $HOME – fall back to just the filename
-            remote_path_str = f"~/{local_file_path.name}"
+    # ------------------------------------------------------------------ #
+    # 2.b Determine a remote *destination* for each local file
+    # ------------------------------------------------------------------ #
+    home = Path.home().resolve()
+    to_copy: list[tuple[Path, str]] = []
 
-    # Directory on the pod that must exist
-    remote_dir = os.path.dirname(remote_path_str)
-    # ``remote_dir`` will be '' when user passed simply '~' or just a filename.
-    needs_mkdir = bool(remote_dir and remote_dir not in ("~", "."))
+    for lf in local_files:
+        if remote_path_str and len(local_files) == 1:
+            # user explicitly supplied a single dest – respect it verbatim
+            rp = remote_path_str
+        else:
+            try:
+                # preserve path relative to $HOME (old behaviour)
+                rel = lf.relative_to(home)
+                rp = f"~/{rel.as_posix()}"
+            except ValueError:
+                rp = f"~/{lf.name}"
+        to_copy.append((lf, rp))
 
     # --------------------------------------------------------------------- #
     # 3.  fetch pod connection details (unchanged except minor refactor)
@@ -1544,53 +1593,35 @@ def scp_to_pod(
         )
         return
 
-    # --------------------------------------------------------------------- #
-    # 5.  ensure remote directory exists (if needed)
-    # --------------------------------------------------------------------- #
-    if needs_mkdir:
-        mkdir_cmd = [
-            "ssh",
-            "-i",
-            str(private_key_path),
-            "-p",
-            port,
-            *other_ssh_options,
-            f"{user}@{host}",
-            f"mkdir -p {q_remote(remote_dir)}",
-        ]
-        console.print(styled(f"Ensuring remote directory '{remote_dir}' exists on '{pod_name_huid}'…", "info"))
-        try:
+    # ------------------------------------------------------------------ #
+    # 5-6.  For *each* file:  mkdir -p (if needed) then scp
+    # ------------------------------------------------------------------ #
+    for lf, rp in to_copy:
+        remote_dir = os.path.dirname(rp)
+        if remote_dir and remote_dir not in ("~", "."):
+            mkdir_cmd = [
+                "ssh",
+                "-i", str(private_key_path),
+                "-p", port,
+                *other_ssh_options,
+                f"{user}@{host}",
+                f"mkdir -p {q_remote(remote_dir)}",
+            ]
             subprocess.run(mkdir_cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            console.print(styled(f"Error creating remote directory '{remote_dir}': {e.stderr}", "error"))
-            return
 
-    # --------------------------------------------------------------------- #
-    # 6.  construct and run scp
-    # --------------------------------------------------------------------- #
-    scp_cmd = [
-        "scp",
-        "-i",
-        str(private_key_path),
-        "-P",
-        port,
-        *other_ssh_options,
-        str(local_file_path),
-        f"{user}@{host}:{remote_path_str}",
-    ]
+        scp_cmd = [
+            "scp",
+            "-i", str(private_key_path),
+            "-P", port,
+            *other_ssh_options,
+            str(lf),
+            f"{user}@{host}:{rp}",
+        ]
 
-    console.print(styled(f"Copying to pod '{pod_name_huid}':", "info"))
-    console.print(styled("  " + " ".join(shlex.quote(p) for p in scp_cmd), "dim"))
-
-    try:
+        console.print(styled(f"Copying {lf} → {pod_name_huid}:{rp}", "info"))
         proc = subprocess.run(scp_cmd, capture_output=True, text=True)
         if proc.returncode == 0:
-            console.print(
-                styled(
-                    f"✅  {local_file_path.name} → {pod_name_huid}:{remote_path_str}",
-                    "success",
-                )
-            )
+            console.print(styled(f"  ✅  done", "success"))
         else:
             console.print(
                 styled(f"Error during scp operation (exit code {proc.returncode}):", "error")
@@ -1599,8 +1630,6 @@ def scp_to_pod(
                 console.print(styled("STDOUT:\n" + proc.stdout, "dim"))
             if proc.stderr:
                 console.print(styled("STDERR:\n" + proc.stderr, "dim"))
-    except Exception as e:
-        console.print(styled(f"Error executing scp command: {e}", "error"))
 
 # Add the config command group to the main cli group
 cli.add_command(config)
