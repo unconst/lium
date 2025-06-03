@@ -15,22 +15,48 @@ from ..helpers import *
 
 
 @click.command(name="exec", help="Execute a command or a bash script on a running pod via SSH.")
-@click.argument("pod_name_huid", type=str)
+@click.argument("pod_targets", type=str, nargs=-1, required=True)
 @click.argument("command_to_run", type=str, required=False)
 @click.option("--script", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
 @click.option("--env", "env_vars", multiple=True, help="Environment variables to set (format: KEY=VALUE). Can be used multiple times.")
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
-def exec_command(pod_name_huid: str, command_to_run: Optional[str], bash_script_path: Optional[str], env_vars: Tuple[str, ...], api_key: Optional[str]):
-    """Executes COMMAND_TO_RUN or the content of the bash script on the pod identified by POD_NAME_HUID.
+def exec_command(pod_targets: tuple, command_to_run: Optional[str], bash_script_path: Optional[str], env_vars: Tuple[str, ...], api_key: Optional[str]):
+    """Executes COMMAND_TO_RUN or the content of the bash script on pod(s) identified by POD_TARGETS.
+    
+    POD_TARGETS can be:
+    - Pod names/HUIDs: zesty-orbit-08
+    - Index numbers from 'lium ps': 1, 2, 3
+    - Comma-separated: 1,2,3 or 1,zesty-orbit-08
+    - All pods: -1
     
     Environment variables can be set using --env KEY=VALUE (can be used multiple times).
-    Example: lium exec pod-name --env MY_VAR=value --env PATH=/custom:$PATH "python script.py"
+    Example: lium exec 1,2 --env MY_VAR=value "python script.py"
+    Example: lium exec -1 "nvidia-smi"
     """
     if not command_to_run and not bash_script_path:
         console.print(styled("Error: Either COMMAND_TO_RUN or --script <script_path> must be provided.", "error"))
         return
     if command_to_run and bash_script_path:
         console.print(styled("Error: Cannot provide both COMMAND_TO_RUN and --script <script_path>.", "error"))
+        return
+
+    if not api_key: api_key = get_or_set_api_key()
+    if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
+
+    client = LiumAPIClient(api_key)
+    
+    # Resolve pod targets using the new helper function
+    resolved_pods, error_msg = resolve_pod_targets(client, pod_targets)
+    
+    if error_msg:
+        console.print(styled(f"Error: {error_msg}", "error"))
+        if not resolved_pods:
+            return
+        else:
+            console.print(styled("Continuing with resolved pods...", "warning"))
+    
+    if not resolved_pods:
+        console.print(styled("No valid pods to execute on.", "error"))
         return
 
     final_command_to_run = ""
@@ -81,126 +107,133 @@ def exec_command(pod_name_huid: str, command_to_run: Optional[str], bash_script_
         console.print(styled("Error: No command or script content to execute.", "error"))
         return
 
-    if not api_key: api_key = get_or_set_api_key()
-    if not api_key: console.print(styled("Error:", "error") + styled(" No API key found.", "primary")); return
-
     ssh_key_path_str = get_config_value("ssh.key_path").rstrip('.pub')
     if not ssh_key_path_str:
         console.print(styled("Error: SSH key path not configured. Use 'lium config set ssh.key_path /path/to/your/private_key'", "error"))
         return
     
-    # Note: paramiko needs the *private* key. get_or_set_ssh_key() was for API.
-    # We should guide user to set private key path for `lium exec`.
-    # For now, assume ssh.key_path in config IS the private key path for this command.
-    # This might require a new config entry like ssh.private_key_path if ssh.key_path is strictly public.
-    # Let's assume for now ssh.key_path can be the private key for `exec`.
     private_key_path = Path(ssh_key_path_str).expanduser()
     if not private_key_path.exists():
         console.print(styled(f"Error: SSH private key not found at '{private_key_path}'", "error"))
         console.print(styled("Please ensure 'ssh.key_path' in your Lium config points to your private SSH key for 'lium exec'.", "info"))
         return
 
-    client = LiumAPIClient(api_key)
-    target_pod_info = None
+    # Show what we're about to execute
+    console.print(styled(f"\nExecuting {operation_description} on {len(resolved_pods)} pod(s):", "info"))
+    for pod, original_ref in resolved_pods:
+        pod_huid = generate_human_id(pod.get("id", ""))
+        console.print(styled(f"  - {pod_huid} ({original_ref})", "dim"))
+    console.print()
 
-    try:
-        active_pods = client.get_pods()
-        if not active_pods: console.print(styled("No active pods found.", "info")); return
-
-        for pod in active_pods:
-            current_pod_id = pod.get("id")
-            if not current_pod_id: continue
-            current_huid = generate_human_id(current_pod_id)
-            if current_huid == pod_name_huid.lower():
-                target_pod_info = pod
-                break
+    # Execute on each pod
+    success_count = 0
+    failure_count = 0
+    
+    for pod, original_ref in resolved_pods:
+        pod_huid = generate_human_id(pod.get("id", ""))
         
-        if not target_pod_info:
-            console.print(styled(f"Error: Pod with Name (HUID) '{pod_name_huid}' not found among active pods.", "error"))
-            return
+        ssh_connect_cmd_str = pod.get("ssh_connect_cmd")
+        if not ssh_connect_cmd_str:
+            console.print(styled(f"⚠️  Pod '{pod_huid}' ({original_ref}) has no SSH connection command available.", "warning"))
+            failure_count += 1
+            continue
 
-    except Exception as e: console.print(styled(f"Error fetching active pods: {str(e)}", "error")); return
+        # Parse SSH command (e.g., "ssh root@IP -p PORT")
+        try:
+            parts = shlex.split(ssh_connect_cmd_str)
+            # Expected format: ssh user@host -p port
+            user_host = parts[1]
+            user, host = user_host.split('@')
+            port = None
+            if "-p" in parts:
+                port_index = parts.index("-p") + 1
+                if port_index < len(parts):
+                    port = int(parts[port_index])
+            if port is None: port = 22 # Default SSH port
+        except Exception as e:
+            console.print(styled(f"⚠️  Error parsing SSH command for '{pod_huid}' ({original_ref}): {str(e)}", "warning"))
+            failure_count += 1
+            continue
 
-    ssh_connect_cmd_str = target_pod_info.get("ssh_connect_cmd")
-    if not ssh_connect_cmd_str:
-        console.print(styled(f"Error: Pod '{pod_name_huid}' has no SSH connection command available.", "error")); return
+        console.print(styled(f"🔗 Connecting to '{pod_huid}' ({original_ref}) at {host}:{port} as {user}...", "info"))
 
-    # Parse SSH command (e.g., "ssh root@IP -p PORT")
-    try:
-        parts = shlex.split(ssh_connect_cmd_str)
-        # Expected format: ssh user@host -p port
-        user_host = parts[1]
-        user, host = user_host.split('@')
-        port = None
-        if "-p" in parts:
-            port_index = parts.index("-p") + 1
-            if port_index < len(parts):
-                port = int(parts[port_index])
-        if port is None: port = 22 # Default SSH port
-    except Exception as e:
-        console.print(styled(f"Error parsing SSH command '{ssh_connect_cmd_str}': {str(e)}", "error"))
-        return
-
-    console.print(styled(f"Connecting to '{pod_name_huid}' ({host}:{port} as {user}) to run {operation_description}", "info"))
-
-    ssh_client = None
-    try:
-        ssh_client = paramiko.SSHClient()
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) # Automatically add host key
-        
-        # Attempt to load various key types, fail gracefully
-        loaded_key = None
-        key_types_to_try = [paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey, paramiko.DSSKey]
-        last_key_error = None
-        for key_type in key_types_to_try:
-            try:
-                loaded_key = key_type.from_private_key_file(str(private_key_path))
-                break
-            except paramiko.ssh_exception.PasswordRequiredException:
-                console.print(styled(f"Error: SSH key '{private_key_path}' is encrypted and requires a passphrase. Passphrase input is not supported yet.", "error"))
-                return
-            except paramiko.ssh_exception.SSHException as e:
-                last_key_error = e # Store last error to show if all fail
+        ssh_client = None
+        try:
+            ssh_client = paramiko.SSHClient()
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) # Automatically add host key
+            
+            # Attempt to load various key types, fail gracefully
+            loaded_key = None
+            key_types_to_try = [paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey, paramiko.DSSKey]
+            last_key_error = None
+            for key_type in key_types_to_try:
+                try:
+                    loaded_key = key_type.from_private_key_file(str(private_key_path))
+                    break
+                except paramiko.ssh_exception.PasswordRequiredException:
+                    console.print(styled(f"⚠️  SSH key '{private_key_path}' is encrypted and requires a passphrase.", "warning"))
+                    failure_count += 1
+                    break
+                except paramiko.ssh_exception.SSHException as e:
+                    last_key_error = e # Store last error to show if all fail
+                    continue
+            
+            if not loaded_key:
+                console.print(styled(f"⚠️  Could not load SSH private key for '{pod_huid}' ({original_ref}). Last error: {last_key_error}", "warning"))
+                failure_count += 1
                 continue
-        
-        if not loaded_key:
-            console.print(styled(f"Error: Could not load SSH private key '{private_key_path}'. Ensure it is a valid, unencrypted private key. Last error: {last_key_error}", "error"))
-            return
 
-        ssh_client.connect(hostname=host, port=port, username=user, pkey=loaded_key, timeout=10)
-        
-        stdin, stdout, stderr = ssh_client.exec_command(final_command_to_run, get_pty=True)
-        
-        # Stream output
-        while not stdout.channel.exit_status_ready():
-            if stdout.channel.recv_ready():
-                data = stdout.channel.recv(1024)
-                sys.stdout.write(data.decode(errors='replace'))
-                sys.stdout.flush()
-            if stderr.channel.recv_ready():
-                data = stderr.channel.recv(1024)
-                sys.stderr.write(data.decode(errors='replace'))
-                sys.stderr.flush()
-        
-        # Get remaining output
-        sys.stdout.write(stdout.read().decode(errors='replace'))
-        sys.stderr.write(stderr.read().decode(errors='replace'))
-        sys.stdout.flush()
-        sys.stderr.flush()
+            ssh_client.connect(hostname=host, port=port, username=user, pkey=loaded_key, timeout=10)
+            
+            stdin, stdout, stderr = ssh_client.exec_command(final_command_to_run, get_pty=True)
+            
+            # For multiple pods, we'll show a header for each pod's output
+            if len(resolved_pods) > 1:
+                console.print(styled(f"\n--- Output from {pod_huid} ({original_ref}) ---", "header"))
+            
+            # Stream output
+            while not stdout.channel.exit_status_ready():
+                if stdout.channel.recv_ready():
+                    data = stdout.channel.recv(1024)
+                    sys.stdout.write(data.decode(errors='replace'))
+                    sys.stdout.flush()
+                if stderr.channel.recv_ready():
+                    data = stderr.channel.recv(1024)
+                    sys.stderr.write(data.decode(errors='replace'))
+                    sys.stderr.flush()
+            
+            # Get remaining output
+            sys.stdout.write(stdout.read().decode(errors='replace'))
+            sys.stderr.write(stderr.read().decode(errors='replace'))
+            sys.stdout.flush()
+            sys.stderr.flush()
 
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status == 0:
-            console.print(styled(f"\nCommand completed on '{pod_name_huid}'. Exit status: {exit_status}", "success"))
-        else:
-            console.print(styled(f"\nCommand failed on '{pod_name_huid}'. Exit status: {exit_status}", "error"))
+            exit_status = stdout.channel.recv_exit_status()
+            if exit_status == 0:
+                console.print(styled(f"✅ Command completed successfully on '{pod_huid}' ({original_ref})", "success"))
+                success_count += 1
+            else:
+                console.print(styled(f"❌ Command failed on '{pod_huid}' ({original_ref}) with exit status: {exit_status}", "error"))
+                failure_count += 1
+            
+        except socket.timeout:
+            console.print(styled(f"⚠️  Connection to '{pod_huid}' ({original_ref}) timed out.", "warning"))
+            failure_count += 1
+        except paramiko.ssh_exception.AuthenticationException:
+            console.print(styled(f"⚠️  Authentication failed for '{pod_huid}' ({original_ref}). Check your SSH key and permissions.", "warning"))
+            failure_count += 1
+        except paramiko.ssh_exception.SSHException as e:
+            console.print(styled(f"⚠️  SSH connection error to '{pod_huid}' ({original_ref}): {str(e)}", "warning"))
+            failure_count += 1
+        except Exception as e:
+            console.print(styled(f"⚠️  Unexpected error with '{pod_huid}' ({original_ref}): {str(e)}", "warning"))
+            failure_count += 1
+        finally:
+            if ssh_client: ssh_client.close()
         
-    except socket.timeout:
-        console.print(styled(f"Error: Connection to '{host}:{port}' timed out.", "error"))
-    except paramiko.ssh_exception.AuthenticationException:
-        console.print(styled(f"Error: Authentication failed for {user}@{host}:{port}. Check your SSH key and permissions.", "error"))
-    except paramiko.ssh_exception.SSHException as e:
-        console.print(styled(f"Error: SSH connection error to {host}:{port}: {str(e)}", "error"))
-    except Exception as e:
-        console.print(styled(f"An unexpected error occurred during SSH execution: {str(e)}", "error"))
-    finally:
-        if ssh_client: ssh_client.close() 
+        # Add a separator between pods if executing on multiple
+        if len(resolved_pods) > 1:
+            console.print()
+
+    # Summary
+    console.print(styled(f"\n📊 Execution Summary: {success_count} successful, {failure_count} failed", "info")) 

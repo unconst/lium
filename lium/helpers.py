@@ -1,4 +1,3 @@
-
 import os
 import re
 import docker
@@ -429,3 +428,69 @@ def build_docker_image(image_name:str, dockerfilepath:str):
         print(f"Error communicating with Docker API during build: {e}")
         exit(1)
     return digest
+
+def resolve_pod_targets(client, target_inputs):
+    """
+    Resolve pod targets that can be:
+    - Pod HUIDs (like 'zesty-orbit-08')
+    - Index numbers (like '1', '2', '3')  
+    - Comma-separated combinations (like '1,2,zesty-orbit-08')
+    - '-1' for all pods
+    
+    Returns a list of (pod_info, original_ref) tuples
+    """
+    try:
+        active_pods = client.get_pods()
+        if not active_pods:
+            return [], "No active pods found."
+    except Exception as e:
+        return [], f"Error fetching active pods: {str(e)}"
+    
+    if not target_inputs:
+        return [], "No pod targets specified."
+    
+    resolved_pods = []
+    failed_resolutions = []
+    
+    # Handle the special case of -1 (all pods)
+    if len(target_inputs) == 1 and target_inputs[0].strip() == '-1':
+        for pod in active_pods:
+            pod_huid = generate_human_id(pod.get("id", ""))
+            resolved_pods.append((pod, "-1 (all)"))
+        return resolved_pods, None
+    
+    # Parse all target inputs (can be comma-separated)
+    all_targets = []
+    for target_input in target_inputs:
+        all_targets.extend([t.strip() for t in target_input.split(',') if t.strip()])
+    
+    for target in all_targets:
+        resolved = False
+        
+        # Try to resolve as index number
+        try:
+            index = int(target)
+            if 1 <= index <= len(active_pods):
+                pod = active_pods[index - 1]  # Convert to 0-based index
+                resolved_pods.append((pod, f"#{index}"))
+                resolved = True
+            else:
+                failed_resolutions.append(f"{target} (index out of range 1-{len(active_pods)})")
+        except ValueError:
+            # Not a number, try to resolve as HUID
+            target_lower = target.lower()
+            for pod in active_pods:
+                current_huid = generate_human_id(pod.get("id", ""))
+                if current_huid == target_lower:
+                    resolved_pods.append((pod, target))
+                    resolved = True
+                    break
+            
+            if not resolved:
+                failed_resolutions.append(target)
+    
+    error_msg = None
+    if failed_resolutions:
+        error_msg = f"Could not resolve: {', '.join(failed_resolutions)}"
+    
+    return resolved_pods, error_msg

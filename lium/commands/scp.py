@@ -15,7 +15,7 @@ from ..helpers import *
 
 
 @click.command(name="scp", help="Copy a local file to a running pod.")
-@click.argument("pod_name_huid", type=str)
+@click.argument("pod_targets", type=str, nargs=-1, required=True)
 @click.argument(
     "local_path_str",
     type=click.Path(exists=True, dir_okay=False, readable=True),
@@ -37,7 +37,7 @@ from ..helpers import *
 )
 @click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def scp_command(
-    pod_name_huid: str,
+    pod_targets: tuple,
     local_path_str: Optional[str],
     remote_path_str: Optional[str],
     coldkey: Optional[str],
@@ -45,7 +45,18 @@ def scp_command(
     api_key: Optional[str],
 ):
     """
-    Copies LOCAL_PATH_STR to REMOTE_PATH_STR on pod POD_NAME_HUID.
+    Copies files to pod(s) identified by POD_TARGETS.
+
+    POD_TARGETS can be:
+    - Pod names/HUIDs: zesty-orbit-08
+    - Index numbers from 'lium ps': 1, 2, 3
+    - Comma-separated: 1,2,3 or 1,zesty-orbit-08
+    - All pods: -1
+
+    Examples:
+    - lium scp 1,2 ~/file.txt
+    - lium scp -1 --coldkey my_wallet
+    - lium scp 1 ~/script.py /home/script.py
 
     If REMOTE_PATH_STR is omitted we copy the file into the pod user's $HOME,
     preserving only the filename (no host-side directories).  This prevents
@@ -74,6 +85,22 @@ def scp_command(
         api_key = get_or_set_api_key()
     if not api_key:
         console.print(styled("Error:", "error") + styled(" No API key found.", "primary"))
+        return
+
+    client = LiumAPIClient(api_key)
+    
+    # Resolve pod targets
+    resolved_pods, error_msg = resolve_pod_targets(client, pod_targets)
+    
+    if error_msg:
+        console.print(styled(f"Error: {error_msg}", "error"))
+        if not resolved_pods:
+            return
+        else:
+            console.print(styled("Continuing with resolved pods...", "warning"))
+    
+    if not resolved_pods:
+        console.print(styled("No valid pods found.", "error"))
         return
 
     private_key_path_config_str = get_config_value("ssh.key_path")
@@ -151,100 +178,116 @@ def scp_command(
                 rp = f"~/{lf.name}"
         to_copy.append((lf, rp))
 
-    # --------------------------------------------------------------------- #
-    # 3.  fetch pod connection details (unchanged except minor refactor)
-    # --------------------------------------------------------------------- #
-    client = LiumAPIClient(api_key)
-    try:
-        target_pod_info = next(
-            (p for p in client.get_pods() or [] if generate_human_id(p.get("id", "")).lower() == pod_name_huid.lower()),
-            None,
-        )
-    except Exception as e:
-        console.print(styled(f"Error fetching active pods: {e}", "error"))
-        return
-    if not target_pod_info:
-        console.print(
-            styled(f"Error: Pod with Name (HUID) '{pod_name_huid}' not found or not active.", "error")
-        )
-        return
-
-    ssh_connect_cmd_str = target_pod_info.get("ssh_connect_cmd")
-    if not ssh_connect_cmd_str:
-        console.print(
-            styled(
-                f"Error: Pod '{pod_name_huid}' has no SSH connection command available "
-                "(it might not be fully RUNNING).",
-                "error",
-            )
-        )
-        return
-
-    # --------------------------------------------------------------------- #
-    # 4.  decompose the ssh command so we can re-use host / port / -o options
-    # --------------------------------------------------------------------- #
-    try:
-        original_parts = shlex.split(ssh_connect_cmd_str)
-        if original_parts[0].lower() != "ssh":
-            raise ValueError("Not a valid ssh command string from pod info.")
-
-        user, host = original_parts[1].split("@", 1)
-        port = "22"
-        other_ssh_options = []
-        i = 2
-        while i < len(original_parts):
-            if original_parts[i] == "-p" and i + 1 < len(original_parts):
-                port = original_parts[i + 1]
-                i += 2
-            elif original_parts[i] == "-o" and i + 1 < len(original_parts):
-                other_ssh_options.extend(original_parts[i : i + 2])
-                i += 2
-            else:
-                other_ssh_options.append(original_parts[i])
-                i += 1
-    except Exception as e:
-        console.print(
-            styled(
-                f"Error parsing pod's SSH connection command ('{ssh_connect_cmd_str}'): {e}",
-                "error",
-            )
-        )
-        return
-
-    # ------------------------------------------------------------------ #
-    # 5-6.  For *each* file:  mkdir -p (if needed) then scp
-    # ------------------------------------------------------------------ #
+    # Show what we're about to copy
+    console.print(styled(f"\n📁 Copying {len(local_files)} file(s) to {len(resolved_pods)} pod(s):", "info"))
     for lf, rp in to_copy:
-        remote_dir = os.path.dirname(rp)
-        if remote_dir and remote_dir not in ("~", "."):
-            mkdir_cmd = [
-                "ssh",
-                "-i", str(private_key_path),
-                "-p", port,
-                *other_ssh_options,
-                f"{user}@{host}",
-                f"mkdir -p {q_remote(remote_dir)}",
-            ]
-            subprocess.run(mkdir_cmd, check=True, capture_output=True, text=True)
+        console.print(styled(f"  - {lf} → {rp}", "dim"))
+    for pod, original_ref in resolved_pods:
+        pod_huid = generate_human_id(pod.get("id", ""))
+        console.print(styled(f"  - Target: {pod_huid} ({original_ref})", "dim"))
+    console.print()
 
-        scp_cmd = [
-            "scp",
-            "-i", str(private_key_path),
-            "-P", port,
-            *other_ssh_options,
-            str(lf),
-            f"{user}@{host}:{rp}",
-        ]
-
-        console.print(styled(f"Copying {lf} → {pod_name_huid}:{rp}", "info"))
-        proc = subprocess.run(scp_cmd, capture_output=True, text=True)
-        if proc.returncode == 0:
-            console.print(styled(f"  ✅  done", "success"))
-        else:
+    # --------------------------------------------------------------------- #
+    # Copy to each pod
+    # --------------------------------------------------------------------- #
+    success_count = 0
+    failure_count = 0
+    
+    for pod, original_ref in resolved_pods:
+        pod_huid = generate_human_id(pod.get("id", ""))
+        
+        ssh_connect_cmd_str = pod.get("ssh_connect_cmd")
+        if not ssh_connect_cmd_str:
             console.print(
-                styled(f"Error during scp operation (exit code {proc.returncode}):", "error")
+                styled(
+                    f"⚠️  Pod '{pod_huid}' ({original_ref}) has no SSH connection command available "
+                    "(it might not be fully RUNNING).",
+                    "warning",
+                )
             )
-            if proc.stdout:
-                console.print(styled("STDOUT:\n" + proc.stdout, "dim"))
-            if proc.stderr:
-                console.print(styled("STDERR:\n" + proc.stderr, "dim")) 
+            failure_count += 1
+            continue
+
+        # --------------------------------------------------------------------- #
+        # 4.  decompose the ssh command so we can re-use host / port / -o options
+        # --------------------------------------------------------------------- #
+        try:
+            original_parts = shlex.split(ssh_connect_cmd_str)
+            if original_parts[0].lower() != "ssh":
+                raise ValueError("Not a valid ssh command string from pod info.")
+
+            user, host = original_parts[1].split("@", 1)
+            port = "22"
+            other_ssh_options = []
+            i = 2
+            while i < len(original_parts):
+                if original_parts[i] == "-p" and i + 1 < len(original_parts):
+                    port = original_parts[i + 1]
+                    i += 2
+                elif original_parts[i] == "-o" and i + 1 < len(original_parts):
+                    other_ssh_options.extend(original_parts[i : i + 2])
+                    i += 2
+                else:
+                    other_ssh_options.append(original_parts[i])
+                    i += 1
+        except Exception as e:
+            console.print(
+                styled(
+                    f"⚠️  Error parsing SSH command for '{pod_huid}' ({original_ref}): {e}",
+                    "warning",
+                )
+            )
+            failure_count += 1
+            continue
+
+        # ------------------------------------------------------------------ #
+        # 5-6.  For *each* file:  mkdir -p (if needed) then scp
+        # ------------------------------------------------------------------ #
+        pod_success = True
+        for lf, rp in to_copy:
+            remote_dir = os.path.dirname(rp)
+            if remote_dir and remote_dir not in ("~", "."):
+                mkdir_cmd = [
+                    "ssh",
+                    "-i", str(private_key_path),
+                    "-p", port,
+                    *other_ssh_options,
+                    f"{user}@{host}",
+                    f"mkdir -p {q_remote(remote_dir)}",
+                ]
+                try:
+                    subprocess.run(mkdir_cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as e:
+                    console.print(styled(f"⚠️  Failed to create directory on '{pod_huid}' ({original_ref}): {e}", "warning"))
+                    pod_success = False
+                    break
+
+            scp_cmd = [
+                "scp",
+                "-i", str(private_key_path),
+                "-P", port,
+                *other_ssh_options,
+                str(lf),
+                f"{user}@{host}:{rp}",
+            ]
+
+            console.print(styled(f"📤 Copying {lf.name} → {pod_huid} ({original_ref}):{rp}", "info"))
+            proc = subprocess.run(scp_cmd, capture_output=True, text=True)
+            if proc.returncode == 0:
+                console.print(styled(f"  ✅ Done", "success"))
+            else:
+                console.print(
+                    styled(f"  ❌ Failed (exit code {proc.returncode})", "error")
+                )
+                if proc.stderr:
+                    console.print(styled(f"     {proc.stderr.strip()}", "dim"))
+                pod_success = False
+                break
+        
+        if pod_success:
+            success_count += 1
+        else:
+            failure_count += 1
+
+    # Summary
+    console.print(styled(f"\n📊 Copy Summary: {success_count} pods successful, {failure_count} pods failed", "info")) 

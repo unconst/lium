@@ -50,6 +50,7 @@ def ps_command(api_key: Optional[str]):
             title_style="title",
             expand=True)
 
+        table.add_column("#", style="dim", justify="right", width=3)  # Index column
         table.add_column("Pod", style="dim", no_wrap=False, min_width=16, max_width=18)  # HUID from pod.id
         table.add_column("Status", style="primary", width=10)
         table.add_column("GPU Config", style="executor.gpu", width=11, no_wrap=True)
@@ -108,6 +109,7 @@ def ps_command(api_key: Optional[str]):
 
             row_style = "table.row.odd" if idx % 2 == 0 else "table.row.even"
             table.add_row(
+                str(idx + 1),  # Index number starting from 1
                 instance_name_huid, 
                 # pod_label, # Removed
                 status_display, 
