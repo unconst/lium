@@ -70,7 +70,6 @@ echo "--------------------------------------------------"
 PORT=20000
 EXPORT=59391
 TOKEN=$(openssl rand -base64 37 | tr -dc 'a-zA-Z0-9' | head -c 50)
-# TOKEN='NSCDu3W4c9EkvoEOlYH93kBJ7ABjWoqcD252XgID4Jqu1Ng'
 # Run JupyterLab using nohup
 nohup jupyter lab --ip=0.0.0.0 --port=$PORT --no-browser --allow-root --NotebookApp.token="$TOKEN" &
 
