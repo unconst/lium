@@ -37,7 +37,7 @@ def ps_command(pod_targets: Optional[tuple], api_key: Optional[str]):
     client = LiumAPIClient(api_key)
     
     # Resolve selected pods and print them
-    if pod_targets != None:
+    if len(pod_targets) > 0:
         select_pods, error_msg = resolve_pod_targets(client, pod_targets)
         for pod in select_pods:
             print( pod )     
