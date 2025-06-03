@@ -72,7 +72,9 @@ def ps_command(api_key: Optional[str]):
             gpu_model_display = extract_gpu_model(gpu_api_name)
             gpu_config_display = f"{gpu_count_val}x {gpu_model_display}" if gpu_count_val > 0 and gpu_api_name != "N/A" else gpu_model_display
             price_per_gpu_hour_display = "N/A"
-            executor_data = pod.get("Pod", {})
+            
+            # Get pricing information from the executor object within the pod
+            executor_data = pod.get("executor", {})
             total_price_per_hour = executor_data.get("price_per_hour")
             if total_price_per_hour is not None and gpu_count_val > 0:
                 price_per_gpu = float(total_price_per_hour) / gpu_count_val

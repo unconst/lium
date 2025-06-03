@@ -39,7 +39,7 @@ def down_command(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip
         if terminate_all:
             for pod in active_pods:
                 pod_id = pod.get("id"); huid = generate_human_id(pod_id)
-                executor_id = pod.get("Pod", {}).get("id") or pod_id 
+                executor_id = pod.get("executor", {}).get("id") or pod_id 
                 pods_to_terminate_info.append({"huid": huid, "pod_id": pod_id, "executor_id": executor_id, "original_ref": huid})
             if not pods_to_terminate_info: console.print(styled("No active pods to terminate with --all.", "info")); return
         else: 
@@ -51,7 +51,7 @@ def down_command(pod_names: Optional[Tuple[str, ...]], terminate_all: bool, skip
                 pod_data = found_pods_map.get(target_huid)
                 if pod_data:
                     pod_id = pod_data.get("id")
-                    executor_id = pod_data.get("Pod", {}).get("id") or pod_id
+                    executor_id = pod_data.get("executor", {}).get("id") or pod_id
                     pods_to_terminate_info.append({"huid": target_huid, "pod_id": pod_id, "executor_id": executor_id, "original_ref": target_huid})
                     if target_huid in unresolved_huids: unresolved_huids.remove(target_huid)
             
