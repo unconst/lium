@@ -1,6 +1,7 @@
 """List active pods command for Lium CLI."""
 
 import click
+import requests
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -23,16 +24,27 @@ def get_status_style(status: str) -> str:
 
 
 @click.command(name="ps", help="List your active pods.")
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
-def ps_command(api_key: Optional[str]):
+@click.argument("pod_targets", type=str, nargs=-1, required=False)
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+def ps_command(pod_targets: Optional[tuple], api_key: Optional[str]):
     """List all active pods for the user."""
     if not api_key: api_key = get_or_set_api_key()
     if not api_key:
         console.print(styled("Error:", "error") + styled(" No API key found. Please set LIUM_API_KEY or use 'lium config set api_key <YOUR_KEY>'", "primary"))
         return
-
+    
+    # Resolve client.
+    client = LiumAPIClient(api_key)
+    
+    # Resolve selected pods and print them
+    if pod_targets != None:
+        select_pods, error_msg = resolve_pod_targets(client, pod_targets)
+        for pod in select_pods:
+            print( pod )     
+        return   
+    
+    # Otherwise print all of them all.
     try:
-        client = LiumAPIClient(api_key)
         pods = client.get_pods()
 
         if not pods:

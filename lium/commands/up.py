@@ -75,7 +75,7 @@ def select_template_interactively(client: LiumAPIClient, skip_prompts: bool = Fa
 @click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names. If single executor, this is the exact pod name.")
 @click.option("--image", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
 @click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations. Uses configured/default template if --template-id is not set.")
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def up_command(
     executor_names_or_ids: Tuple[str, ...],
     template_id_option: Optional[str],

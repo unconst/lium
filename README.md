@@ -6,10 +6,13 @@ Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 
 ---
 ### Install 
-Make sure you have uv and Python 3.10+ installed.
 ```bash
-# Install from source
-git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/bin/activate && uv pip install -e .
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Clone this project.
+git clone git@github.com:unconst/lium.git && cd lium
+# Install from source 
+uv venv && source .venv/bin/activate && uv pip install -e .
 ```
 
 ### Use
@@ -20,7 +23,7 @@ git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/
 # Init lium config
 lium init
 > Please enter your Lium API key (See: https://celiumcompute.ai/api-keys): ...
-> Please enter the path to your ssh private key (i.e.: ~/.ssh/id_rsa): ...
+> Please enter the path to your ssh public key (i.e.: ~/.ssh/id_rsa.pub): ...
 ```
 ![Lium config show](assets/liumconfigshow.png)
 
@@ -47,7 +50,7 @@ lium ls H100
 lium up noble-matrix-a3
 
 # Rent multiple pods
-lium up golden-pixel-2f, calm-jaguar-f6`
+lium up golden-pixel-2f, calm-jaguar-f6
 ```
 ![Lium up](assets/liumuppod.png)
 
@@ -55,7 +58,13 @@ lium up golden-pixel-2f, calm-jaguar-f6`
 `lium ps`
 ```bash
 # Shows all actively rented pods and their status
-lium ps
+lium ps 
+
+# Inspect one of your pods
+lium ps cosmic-raven-39
+
+# Inspect pod @ index 2
+lium ps 2
 ```
 ![Lium ps](assets/liumps.png)
 
@@ -65,20 +74,17 @@ lium ps
 # Executes python --version command on cosmic-raven-39
 lium exec cosmic-raven-39 "python --version"
 
+# Execute python on pods by index
+lium exec 1,2,3 "python --version"
+
 # Execute with environment variables
 lium exec cosmic-raven-39 --env MY_VAR=value --env PATH=/custom:$PATH "python script.py"
 
 # Multiple environment variables for a script
 lium exec cosmic-raven-39 --env API_KEY=secret --env DEBUG=true --script scripts/app.sh
-```
-![lium exec](assets/liumexec.png)
 
----
-`lium exec --script`
-
-```bash
-# Starts a jupyter server via script in scripts/
-lium exec cosmic-raven-39 --script scripts/jupyter.sh
+# Start a jupyter server via script on pod index 1.
+lium exec 1 --script scripts/jupyter.sh
 ```
 ![lium exec](assets/jupyter.png)
 
@@ -96,8 +102,11 @@ lium ssh laser-cipher-a9
 # Copy /Users/user/cat.py → zesty-orbit-08:~/cat.py
 lium scp zesty-orbit-08 ~/cat.py
 
-# Copy my default coldkey and hotkey
+# Copy my coldkeypub and hotkey to machine
 lium scp zesty-orbit-08 --coldkey default --hotkey default
+
+# Copy coldkey to all machines
+lium scp all --coldkey default
 ```
 ![lium exec](assets/liumscp.png)
 

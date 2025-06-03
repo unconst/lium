@@ -13,9 +13,9 @@ from ..helpers import *
 
 @click.command(name="down", help="Unrent/terminate one or more pods. Use Name (HUID) or --all.")
 @click.argument("pod_targets", type=str, nargs=-1, required=False)
-@click.option("--all", "terminate_all", is_flag=True, help="Terminate all active pods.")
+@click.option("--all", '-a', "terminate_all", is_flag=True, help="Terminate all active pods.")
 @click.option("--yes", "-y", "skip_confirmation", is_flag=True, help="Skip confirmation prompts.") # Added -y alias
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def down_command(pod_targets: Optional[Tuple[str, ...]], terminate_all: bool, skip_confirmation: bool, api_key: Optional[str]):
     """Unrents/terminates pod(s) identified by POD_TARGETS or all active pods.
     
@@ -23,11 +23,11 @@ def down_command(pod_targets: Optional[Tuple[str, ...]], terminate_all: bool, sk
     - Pod names/HUIDs: zesty-orbit-08
     - Index numbers from 'lium ps': 1, 2, 3
     - Comma-separated: 1,2,3 or 1,zesty-orbit-08
-    - Special: -1 (all pods, same as --all)
+    - Special: all (all pods, same as --all)
     
     Examples:
     - lium down 1,2,3
-    - lium down -1
+    - lium down all
     - lium down zesty-orbit-08
     """
     if not api_key: api_key = get_or_set_api_key()

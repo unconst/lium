@@ -435,7 +435,7 @@ def resolve_pod_targets(client, target_inputs):
     - Pod HUIDs (like 'zesty-orbit-08')
     - Index numbers (like '1', '2', '3')  
     - Comma-separated combinations (like '1,2,zesty-orbit-08')
-    - '-1' for all pods
+    - 'all' for all pods
     
     Returns a list of (pod_info, original_ref) tuples
     """
@@ -453,10 +453,10 @@ def resolve_pod_targets(client, target_inputs):
     failed_resolutions = []
     
     # Handle the special case of -1 (all pods)
-    if len(target_inputs) == 1 and target_inputs[0].strip() == '-1':
+    if len(target_inputs) == 1 and target_inputs[0].strip() == 'all':
         for pod in active_pods:
             pod_huid = generate_human_id(pod.get("id", ""))
-            resolved_pods.append((pod, "-1 (all)"))
+            resolved_pods.append((pod, "all"))
         return resolved_pods, None
     
     # Parse all target inputs (can be comma-separated)

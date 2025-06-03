@@ -35,7 +35,7 @@ from ..helpers import *
          "(`~/.bittensor/wallets/<coldkey>/hotkeys/<hotkey>`). "
          "Requires --coldkey.",
 )
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def scp_command(
     pod_targets: tuple,
     local_path_str: Optional[str],

@@ -15,7 +15,7 @@ from ..helpers import *
 
 @click.command(name="ssh", help="Open an interactive SSH session to a running pod.")
 @click.argument("pod_target", type=str)
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def ssh_command(pod_target: str, api_key: Optional[str]):
     """Opens an interactive SSH session to the pod identified by POD_TARGET.
     

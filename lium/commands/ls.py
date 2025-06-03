@@ -10,7 +10,7 @@ from ..helpers import *
 
 
 @click.command(name="ls")
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 @click.argument("gpu_type_filter", required=False, type=str)
 def ls_command(api_key: Optional[str], gpu_type_filter: Optional[str]):
     """List all available executors.

@@ -17,9 +17,9 @@ from ..helpers import *
 @click.command(name="exec", help="Execute a command or a bash script on a running pod via SSH.")
 @click.argument("pod_targets", type=str, nargs=-1, required=True)
 @click.argument("command_to_run", type=str, required=False)
-@click.option("--script", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
-@click.option("--env", "env_vars", multiple=True, help="Environment variables to set (format: KEY=VALUE). Can be used multiple times.")
-@click.option("--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
+@click.option("--script", "-s", "--scripts", "bash_script_path", type=click.Path(exists=True, dir_okay=False, readable=True), help="Path to a bash script to execute on the pod.")
+@click.option("--env", '-e', "env_vars", multiple=True, help="Environment variables to set (format: KEY=VALUE). Can be used multiple times.")
+@click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def exec_command(pod_targets: tuple, command_to_run: Optional[str], bash_script_path: Optional[str], env_vars: Tuple[str, ...], api_key: Optional[str]):
     """Executes COMMAND_TO_RUN or the content of the bash script on pod(s) identified by POD_TARGETS.
     
@@ -27,11 +27,11 @@ def exec_command(pod_targets: tuple, command_to_run: Optional[str], bash_script_
     - Pod names/HUIDs: zesty-orbit-08
     - Index numbers from 'lium ps': 1, 2, 3
     - Comma-separated: 1,2,3 or 1,zesty-orbit-08
-    - All pods: -1
+    - All pods: all
     
     Environment variables can be set using --env KEY=VALUE (can be used multiple times).
     Example: lium exec 1,2 --env MY_VAR=value "python script.py"
-    Example: lium exec -1 "nvidia-smi"
+    Example: lium exec all "nvidia-smi"
     """
     if not command_to_run and not bash_script_path:
         console.print(styled("Error: Either COMMAND_TO_RUN or --script <script_path> must be provided.", "error"))
