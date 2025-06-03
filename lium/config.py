@@ -2,12 +2,12 @@
 
 import os
 import sys
+import json
 import configparser
 from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
 from typing import Optional, Any, Dict, List, Tuple
-import json
 from .styles import styled, get_theme
 
 CONFIG_DIR = Path.home() / ".lium"

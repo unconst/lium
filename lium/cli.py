@@ -1,17 +1,6 @@
 """Main CLI entry point for Lium."""
 
-import os
-import time
 import click
-import subprocess
-from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional, Dict, List, Any, Tuple
-
-from .config import *
-from .helpers import *
-from .api import LiumAPIClient
-from .styles import get_theme, styled
 from .commands.ls import ls_command
 from .commands.ps import ps_command
 from .commands.up import up_command

@@ -1,7 +1,7 @@
 """Terminate pods command for Lium CLI."""
 
-import click
 import json
+import click
 import requests
 from typing import Optional, Dict, List, Any, Tuple
 
@@ -9,7 +9,6 @@ from ..config import get_or_set_api_key
 from ..api import LiumAPIClient
 from ..styles import styled
 from ..helpers import *
-
 
 @click.command(name="down", help="Unrent/terminate one or more pods. Use Name (HUID) or --all.")
 @click.argument("pod_targets", type=str, nargs=-1, required=False)

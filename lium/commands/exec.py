@@ -1,9 +1,9 @@
 """Execute commands on pods via SSH for Lium CLI."""
 
+import sys
 import click
 import shlex
 import socket
-import sys
 import paramiko
 from pathlib import Path
 from typing import Optional, Tuple

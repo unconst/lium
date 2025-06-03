@@ -9,7 +9,7 @@ Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 ```bash
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-# Clone this project.
+# Clone Lium
 git clone git@github.com:unconst/lium.git && cd lium
 # Install from source 
 uv venv && source .venv/bin/activate && uv pip install -e .
@@ -30,7 +30,7 @@ lium init
 ---
 `lium fund` 
 ```bash
-# Add 10 TAO to my current balance.
+# Add TAO to balance
 lium fund --wallet my_wallet_name --tao 10
 ```
 ![Lium fund](assets/liumfund.png)
@@ -38,7 +38,9 @@ lium fund --wallet my_wallet_name --tao 10
 ---
 `lium ls` 
 ```bash
-# List all available H100s for rental
+# List all GPU types
+lium ls 
+# List available H100s
 lium ls H100
 ```
 ![Lium ls H100](assets/liumls.png)
@@ -46,9 +48,8 @@ lium ls H100
 ---
 `lium up`
 ```bash
-# Rent pod with name "golden-pixel-2f"
+# Rent pod with HUID
 lium up noble-matrix-a3
-
 # Rent multiple pods
 lium up golden-pixel-2f, calm-jaguar-f6
 ```
@@ -57,13 +58,11 @@ lium up golden-pixel-2f, calm-jaguar-f6
 ---
 `lium ps`
 ```bash
-# Shows all actively rented pods and their status
+# Shows all pods
 lium ps 
-
-# Inspect one of your pods
+# Inspect pod by HUID
 lium ps cosmic-raven-39
-
-# Inspect pod @ index 2
+# Inspect pod by index.
 lium ps 2
 ```
 ![Lium ps](assets/liumps.png)
@@ -71,52 +70,49 @@ lium ps 2
 ---
 `lium exec`
 ```bash
-# Executes python --version command on cosmic-raven-39
-lium exec cosmic-raven-39 "python --version"
-
-# Execute python on pods by index
-lium exec 1,2,3 "python --version"
-
-# Execute with environment variables
-lium exec cosmic-raven-39 --env MY_VAR=value --env PATH=/custom:$PATH "python script.py"
-
-# Multiple environment variables for a script
-lium exec cosmic-raven-39 --env API_KEY=secret --env DEBUG=true --script scripts/app.sh
-
-# Start a jupyter server via script on pod index 1.
-lium exec 1 --script scripts/jupyter.sh
+# Run on pods 1, 2, 3
+lium exec 1,2,3 "nvidia-smi" 
+# Run on all pods
+lium exec all "uptime"
+# Execute with mixed targets.
+lium exec 1,zesty-orbit-08 "ls -la"
+# Execute with script
+lium exec 1 --script "python script.py"
+# Execute with env vars
+lium exec 3 --env API_KEY=secret --script "script.sh"
+# Execute jupyter notebook.
+lium exec cosmic-raven-39 --script scripts/jupyter.sh
 ```
 ![lium exec](assets/jupyter.png)
 
 ---
 `lium ssh`
 ```bash
-# Opens an ssh connection into laser-cipher-a9
-lium ssh laser-cipher-a9
+# SSH to pod #1
+lium ssh 1      
+# SSH by HUID         
+lium ssh zesty-orbit-08    
 ```
 ![lium ssh](assets/liumssh.png)
 
 ---
 `lium scp`
 ```bash
-# Copy /Users/user/cat.py → zesty-orbit-08:~/cat.py
-lium scp zesty-orbit-08 ~/cat.py
-
-# Copy my coldkeypub and hotkey to machine
-lium scp zesty-orbit-08 --coldkey default --hotkey default
-
-# Copy coldkey to all machines
-lium scp all --coldkey default
+# Copy to pods 1 and 2
+lium scp 1,2 ~/file.txt 
+# Wallet to all pods
+lium scp all --coldkey A --hotkey B 
 ```
 ![lium exec](assets/liumscp.png)
 
 ---
 `lium down`
 ```bash
-# Release your rental on a pod golden-pixel-2f
+# Release rental by HUID
 lium down golden-pixel-2f
-
-# Release all rentals without confirmation
+# Release multiple rentals
+lium down 1,2,3
+# Release all rentals
 lium down --all -y
 ```
 ![lium down](assets/liumdown.png)
@@ -126,12 +122,9 @@ lium down --all -y
 ```bash
 # Build a custom image from local Dockerfile 
 lium image my_image .
-# Use it lium up <pod> --image 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
-
-# Set this image as your default
+# Set image as default.
 lium config set template.default_id 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
-
-# Or use it directly
+# Rent pod with image.
 lium up golden-pixel-2f --image 3f839fd6-1c7f-4b69-8850-9503a4c1c3f5
 ```
 ![Lium image](assets/liumimage.png)

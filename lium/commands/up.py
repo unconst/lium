@@ -71,13 +71,13 @@ def select_template_interactively(client: LiumAPIClient, skip_prompts: bool = Fa
 
 
 @click.command(name="up", help="Rent pod(s) on executor(s) specified by Name (Executor HUID/UUID).")
-@click.argument("executor_names_or_ids", type=str, nargs=-1)
+@click.argument("pod_names_or_ids", type=str, nargs=-1)
 @click.option("--prefix", "pod_name_prefix_opt", type=str, required=False, help="Prefix for pod names. If single executor, this is the exact pod name.")
 @click.option("--image", "template_id_option", type=str, required=False, help="The UUID of the template to use (optional).")
 @click.option("-y", "--yes", "skip_all_prompts", is_flag=True, help="Skip all confirmations. Uses configured/default template if --template-id is not set.")
 @click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def up_command(
-    executor_names_or_ids: Tuple[str, ...],
+    pod_names_or_ids: Tuple[str, ...],
     template_id_option: Optional[str],
     skip_all_prompts: bool,
     api_key: Optional[str],
@@ -88,7 +88,7 @@ def up_command(
     ssh_public_keys = get_or_set_ssh_key()
     if not ssh_public_keys: console.print(styled("Error: No SSH public keys found.", "error")); return
     
-    if executor_names_or_ids == None or len(executor_names_or_ids) == 0:
+    if pod_names_or_ids == None or len(pod_names_or_ids) == 0:
         console.print( styled('\nUse: `lium ls <GPU>` for get a pod name. (i.e. lium up 4090)\n', 'info'))
         return
     
@@ -168,7 +168,7 @@ def up_command(
 
     # ... (HUID resolution logic - largely unchanged, ensure `all_executors_data` is fetched once if needed)
     raw_identifiers = []
-    for item in executor_names_or_ids: raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
+    for item in pod_names_or_ids: raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
     target_identifiers = [ident for ident in raw_identifiers if ident]
     if not target_identifiers: console.print(styled("Error: No executor Names (HUIDs) or UUIDs provided.", "error")); return
     executors_to_process: List[Dict[str, Any]] = []; all_executors_data = None; failed_resolutions = []

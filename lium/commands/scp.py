@@ -51,11 +51,11 @@ def scp_command(
     - Pod names/HUIDs: zesty-orbit-08
     - Index numbers from 'lium ps': 1, 2, 3
     - Comma-separated: 1,2,3 or 1,zesty-orbit-08
-    - All pods: -1
+    - All pods: all
 
     Examples:
     - lium scp 1,2 ~/file.txt
-    - lium scp -1 --coldkey my_wallet
+    - lium scp all --coldkey my_wallet --hotkey my_hotkey
     - lium scp 1 ~/script.py /home/script.py
 
     If REMOTE_PATH_STR is omitted we copy the file into the pod user's $HOME,
