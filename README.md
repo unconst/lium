@@ -8,10 +8,8 @@ Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
 ### Install 
 Make sure you have uv and Python 3.10+ installed.
 ```bash
-# Load env for lium
-git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/bin/activate
-# Install lium from source
-uv pip install -e .
+# Install from source
+git clone git@github.com:unconst/lium.git && cd lium && uv venv && source .venv/bin/activate && uv pip install -e .
 ```
 
 ### Use
@@ -91,6 +89,17 @@ lium exec cosmic-raven-39 --script scripts/jupyter.sh
 lium ssh laser-cipher-a9
 ```
 ![lium ssh](assets/liumssh.png)
+
+---
+`lium scp`
+```bash
+# Copy /Users/user/cat.py → zesty-orbit-08:~/cat.py
+lium scp zesty-orbit-08 ~/cat.py
+
+# Copy my default coldkey and hotkey
+lium scp zesty-orbit-08 --coldkey default --hotkey default
+```
+![lium exec](assets/liumscp.png)
 
 ---
 `lium down`
