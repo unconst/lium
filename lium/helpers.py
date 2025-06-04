@@ -2,10 +2,15 @@ import os
 import re
 import docker
 import hashlib
+from rich.text import Text
 from rich.table import Table
+from rich.panel import Panel
+from rich.console import Group
 from rich.prompt import Prompt
 from rich.console import Console
+from rich import print as rprint
 from rich.box import ROUNDED, MINIMAL
+from datetime import datetime, timezone
 from collections import defaultdict
 from .styles import get_theme, styled
 from .config import get_or_set_docker_credentials
@@ -206,6 +211,128 @@ def group_executors_by_gpu(executors: List[Dict[str, Any]]) -> Dict[str, List[Di
         grouped[gpu_model].append(executor)
     
     return dict(grouped)
+
+def show_pod(pod: Dict):
+    general = Table(
+        box=None,
+        show_header=False,
+        show_lines=False,
+        show_edge=False,
+        padding=(0, 1),
+        header_style="table.header",
+        title_style="title",
+        expand=True
+    )
+    general.add_column(justify="right", style="bold")
+    general.add_column(style="dim")
+    general.add_row("Pod Name", pod['pod_name'])
+    general.add_row("Status", pod['status'])
+    general.add_row("SSH", pod['ssh_connect_cmd'])
+    general.add_row("Created", pod['created_at'])
+    general.add_row("Updated", pod['updated_at'])
+    general.add_row("ID", pod['id'])
+
+    # Template
+    template = Table(
+        box=None,
+        show_header=False,
+        show_lines=False,
+        show_edge=False,
+        padding=(0, 1),
+        header_style="table.header",
+        title_style="title",
+        expand=True
+    )
+    template.add_column(justify="right", style="bold")
+    template.add_column(style="dim")
+    template.add_row("Template", pod['template']['name'])
+    template.add_row("Image", pod['template']['docker_image'])
+    template.add_row("Tag", pod['template']['docker_image_tag'])
+
+    # Resources
+    resources = Table(
+        title="Hardware Specs",
+        box=None,
+        show_header=True,
+        show_lines=True,
+        show_edge=False,
+        padding=(0, 1),
+        header_style="table.header",
+        title_style="title",
+        expand=True
+    )
+    resources.add_column("Component", style="bold")
+    resources.add_column("Details", style="dim")
+
+    resources.add_row("CPU", f"{pod['cpu_name']} ({pod['executor']['specs']['cpu']['count']} cores)")
+    resources.add_row("GPU", f"{pod['gpu_name']} ({pod['gpu_count']} total)")
+    resources.add_row("GPU Driver", pod['executor']['specs']['gpu']['driver'])
+    resources.add_row("GPU Utilization", f"{pod['executor']['specs']['gpu']['details'][0]['gpu_utilization']}%")
+    resources.add_row("RAM", f"{pod['ram_total'] / 1e6:.2f} GB total")
+    resources.add_row("RAM Utilization", f"{pod['executor']['specs']['ram']['utilization']}%")
+    resources.add_row("OS", pod['executor']['specs']['os'])
+    resources.add_row("Network", f"{pod['executor']['specs']['network']['upload_speed']}↑ / {pod['executor']['specs']['network']['download_speed']}↓ Mbps")
+    resources.add_row("Price", f"${pod['executor']['price_per_hour']:.4f} / hour")
+
+    # Additional Information: Cost and Uptime
+    cost_so_far_display = "N/A"
+    uptime_hours_display = "N/A"
+    created_at_str = pod.get("created_at", "")
+    total_price_per_hour = pod['executor'].get('price_per_hour', 0)
+    if created_at_str:
+        try:
+            if created_at_str.endswith('Z'):
+                dt_created = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            elif '+' not in created_at_str and '-' not in created_at_str[10:]:
+                dt_created = datetime.fromisoformat(created_at_str).replace(tzinfo=timezone.utc)
+            else:
+                dt_created = datetime.fromisoformat(created_at_str)
+            now_utc = datetime.now(timezone.utc)
+            duration = now_utc - dt_created
+            duration_hours = duration.total_seconds() / 3600
+            if duration_hours > 0:
+                uptime_hours_display = f"{duration_hours:.2f} hours"
+                cost_so_far_display = f"${(duration_hours * float(total_price_per_hour)):.2f}"
+            else:
+                uptime_hours_display = "<0.1 hours"
+                cost_so_far_display = "$0.00"
+        except ValueError:
+            uptime_hours_display = "Date Error"
+            cost_so_far_display = "Date Error"
+
+    resources.add_row("Uptime", uptime_hours_display)
+    resources.add_row("Cost So Far", cost_so_far_display)
+
+    # Ports
+    ports = Table(
+        title="Port Mapping",
+        box=None,
+        show_header=True,
+        show_lines=False,
+        show_edge=False,
+        padding=(0, 1),
+        header_style="table.header",
+        title_style="title",
+        expand=True
+    )
+    ports.add_column("Internal Port", justify="right", style="bold")
+    ports.add_column("External Port", justify="left", style="dim")
+    for k, v in pod['ports_mapping'].items():
+        ports.add_row(str(k), str(v))
+
+    # Final layout
+    console.print(
+        Panel(
+            Group(
+                Panel(general, title=styled("[b]General Info", 'info')),
+                Panel(template, title=styled("[b]Template Info", 'info')),
+                Panel(resources, title=styled("[b]System Resources", 'info')),
+                Panel(ports, title=styled("[b]Ports Mapping", 'info')),
+            ),
+            title=styled(f"[bold]POD: {pod['pod_name']}", 'info'),
+            border_style="dim",
+        )
+    )
 
 
 def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:

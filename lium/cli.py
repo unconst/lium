@@ -13,6 +13,7 @@ from .commands.theme import theme_command
 from .commands.exec import exec_command
 from .commands.ssh import ssh_command
 from .commands.scp import scp_command
+from .commands.rsync import rsync_command
 
 @click.group()
 def cli():
@@ -32,6 +33,7 @@ cli.add_command(theme_command)
 cli.add_command(exec_command)
 cli.add_command(ssh_command)
 cli.add_command(scp_command)
+cli.add_command(rsync_command)
 
 
 def main():

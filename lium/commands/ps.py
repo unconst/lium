@@ -40,7 +40,7 @@ def ps_command(pod_targets: Optional[tuple], api_key: Optional[str]):
     if len(pod_targets) > 0:
         select_pods, error_msg = resolve_pod_targets(client, pod_targets)
         for pod in select_pods:
-            print( pod )     
+            show_pod( pod[0] )     
         return   
     
     # Otherwise print all of them all.
