@@ -318,6 +318,40 @@ def rsync_command(
         rsync_cmd = ["rsync"] + rsync_options + ["-e", f"ssh {complete_ssh_options}"]
         
         if operation_mode == "local_to_remote":
+            # Create remote directory structure before syncing (unless in dry-run mode)
+            remote_dir = os.path.dirname(remote_path)
+            if remote_dir and remote_dir not in ("~", ".", "") and not dry_run:
+                mkdir_cmd = [
+                    "ssh",
+                    "-i", str(private_key_path),
+                    "-p", port,
+                    *other_ssh_options,
+                    f"{user}@{host}",
+                    f"mkdir -p {q_remote(remote_dir)}",
+                ]
+                
+                # Only show directory creation in verbose mode or if not quiet
+                if not quiet:
+                    console.print(styled(f"  📁 Creating directory structure: {remote_dir}", "dim"))
+                
+                try:
+                    proc_mkdir = subprocess.run(mkdir_cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as e:
+                    console.print(
+                        styled(
+                            f"⚠️  Failed to create directory '{remote_dir}' on '{pod_huid}' ({original_ref}): {e}",
+                            "warning",
+                        )
+                    )
+                    if e.stderr:
+                        console.print(styled(f"     {e.stderr.strip()}", "dim"))
+                    failure_count += 1
+                    continue
+            elif remote_dir and remote_dir not in ("~", ".", "") and dry_run:
+                # In dry-run mode, just show what directory would be created
+                if not quiet:
+                    console.print(styled(f"  📁 Would create directory structure: {remote_dir}", "dim"))
+            
             rsync_cmd.extend([str(local_path_obj), f"{user}@{host}:{q_remote(remote_path)}"])
         else:  # remote_to_local
             rsync_cmd.extend([f"{user}@{host}:{q_remote(remote_path)}", str(local_path_obj)])
