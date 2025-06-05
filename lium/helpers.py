@@ -339,20 +339,6 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
     """Show summary of GPUs grouped by type and return selected type."""
     grouped = group_executors_by_gpu(executors)
     
-    # Create summary table
-    table = Table(
-        title=styled(f"GPU Types Summary ({len(executors)} total executors)", "title"),
-        box=None, show_header=True, show_lines=False, show_edge=False,
-        padding=(0, 1),
-        header_style="table.header", title_style="title",
-        expand=True)
-    
-    # Add columns
-    table.add_column("Pod Type", style="executor.gpu", no_wrap=True)
-    table.add_column("Min $/GPU", style="executor.price", justify="right")
-    table.add_column("Max $/GPU", style="executor.price", justify="right")
-    table.add_column("Available", style="number", justify="right")
-    
     # Calculate prices for each GPU type
     gpu_price_data = []
     
@@ -381,21 +367,27 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
     # Sort by price descending (most expensive first)
     gpu_price_data.sort(key=lambda x: x['sort_price'], reverse=True)
     
-    # Add rows to table
-    for idx, data in enumerate(gpu_price_data):
-        # Format prices - always show both min and max
-        min_price_str = f"${data['min_price']:.2f}"
-        max_price_str = f"${data['max_price']:.2f}"
-        
-        # Add row with alternating background
-        style = "table.row.odd" if idx % 2 == 0 else "table.row.even"
-        table.add_row(
-            data['gpu_type'],
-            min_price_str,
-            max_price_str,
-            str(data['total_gpus']),
-            style=style
-        )
+    # Create summary table with rotated layout
+    table = Table(
+        title=styled(f"GPU Types Summary ({len(executors)} total executors)", "title"),
+        box=None, show_header=True, show_lines=False, show_edge=False,
+        padding=(0, 1),
+        header_style="table.header", title_style="title",
+        expand=True)
+    
+    # Add columns for each GPU type
+    table.add_column("Metric", style="executor.gpu", no_wrap=True)
+    for data in gpu_price_data:
+        table.add_column(data['gpu_type'], style="executor.gpu", justify="right")
+    
+    # Add rows for each metric
+    min_prices = ["Min $/GPU"] + [f"${data['min_price']:.2f}" for data in gpu_price_data]
+    max_prices = ["Max $/GPU"] + [f"${data['max_price']:.2f}" for data in gpu_price_data]
+    availabilities = ["Available"] + [str(data['total_gpus']) for data in gpu_price_data]
+    
+    table.add_row(*min_prices)
+    table.add_row(*max_prices)
+    table.add_row(*availabilities)
     
     console.print(table)
     
