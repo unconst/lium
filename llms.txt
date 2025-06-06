@@ -1,0 +1,368 @@
+# LIUM - GPU Pod Management System
+
+Lium is a CLI tool and Python SDK for managing Celium Compute GPU pods. It provides full programmatic and command-line access to rent, manage, and interact with GPU instances.
+
+## ARCHITECTURE
+
+**Entry Points:**
+- CLI: `lium` command (defined in pyproject.toml as `lium.cli:main`)
+- SDK: `from lium import LiumSDK`
+- Direct API: `from lium import LiumAPIClient`
+
+**Core Modules:**
+- `lium/cli.py` - CLI entry point
+- `lium/sdk.py` - Python SDK (LiumSDK class)
+- `lium/api.py` - Direct API client (LiumAPIClient class)
+- `lium/config.py` - Configuration management (~/.lium/config.ini)
+- `lium/commands/` - CLI command implementations
+- `lium/helpers.py` - Utility functions
+- `lium/styles.py` - Rich terminal styling
+
+## INSTALLATION
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Clone repo
+git clone git@github.com:unconst/lium.git && cd lium
+# Install from source
+uv venv && source .venv/bin/activate && uv pip install -e .
+```
+
+## CONFIGURATION
+
+**Setup:**
+```bash
+lium init  # Interactive setup: API key + SSH public key path
+```
+
+**Config file:** `~/.lium/config.ini`
+```ini
+[api]
+api_key = your_api_key
+
+[ssh]
+key_path = ~/.ssh/id_rsa.pub
+user = root
+
+[template]
+default_id = template_uuid
+```
+
+**Config commands:**
+```bash
+lium config set api.api_key <key>
+lium config set ssh.key_path <path>
+lium config set template.default_id <uuid>
+lium config show
+```
+
+## CLI COMMANDS
+
+### Basic Operations
+```bash
+# List GPU types/executors
+lium ls                    # All executors
+lium ls H100              # Filter by GPU type
+
+# Start pods
+lium up 1                 # By index from ls
+lium up noble-matrix-a3   # By HUID
+lium up 1,2,3            # Multiple pods
+lium up --prefix my-job   # Custom pod name prefix
+lium up --image <uuid>    # Specific template
+
+# List active pods
+lium ps                   # All pods
+lium ps cosmic-raven-39   # Specific pod by HUID
+lium ps 2                 # By index
+
+# Stop pods
+lium down golden-pixel-2f
+lium down 1,2,3
+lium down --all -y        # Stop all pods
+```
+
+### Remote Execution
+```bash
+# Execute commands
+lium exec 1,2,3 "nvidia-smi"
+lium exec all "uptime"
+lium exec 1 --script "python script.py"
+lium exec 3 --env API_KEY=secret --script "script.sh"
+
+# SSH access
+lium ssh 1
+lium ssh zesty-orbit-08
+
+# File transfer
+lium scp 1,2 ~/file.txt           # Upload to pods
+lium scp all --coldkey A --hotkey B  # Wallet transfer
+
+# Directory sync
+lium rsync ~/project/ 1,2:/home/project/ -v
+lium rsync 1:/home/project/ ~/backup/ -z
+lium rsync all:/home/logs/ ~/collected/
+lium rsync ~/data/ all:/workspace/ --delete --exclude '*.tmp'
+```
+
+### Advanced Operations
+```bash
+# Funding
+lium fund --wallet my_wallet --tao 10
+
+# Custom images
+lium image my_image .                    # Build from Dockerfile
+lium up 1 --image <custom_image_uuid>   # Use custom image
+
+# Utilities
+lium exec 1 --script scripts/jupyter.sh  # Start Jupyter
+```
+
+## PYTHON SDK
+
+### Basic Usage
+```python
+from lium import LiumSDK, PodInfo, ExecutorInfo
+
+# Initialize (uses ~/.lium/config.ini)
+lium = LiumSDK()
+# Or with explicit API key
+lium = LiumSDK(api_key="your_key")
+```
+
+### Core Operations
+```python
+# List executors
+executors = lium.list_executors()
+h100s = lium.list_executors(gpu_type="H100")
+cheapest = min(executors, key=lambda x: x.price_per_gpu_hour)
+
+# Start pods
+pod = lium.start_pod(
+    executor_id=executor.id,
+    pod_name="my-training-job",
+    template_id=template_id  # Optional
+)
+
+# List pods
+pods = lium.list_pods()
+pod = lium.get_pod_by_name("my-training-job")
+
+# Wait for readiness
+ready = lium.wait_for_pod_ready(pod['id'], max_wait=300)
+
+# Execute commands
+result = lium.execute_command(
+    pod_id=pod['id'],
+    command="nvidia-smi",
+    env_vars={"CUDA_VISIBLE_DEVICES": "0"},
+    timeout=30
+)
+# Returns: {"stdout": str, "stderr": str, "exit_code": int, "success": bool}
+```
+
+### File Operations
+```python
+# Upload/download files
+lium.upload_file(
+    pod_id=pod['id'],
+    local_path="./train.py",
+    remote_path="/home/train.py"
+)
+
+lium.download_file(
+    pod_id=pod['id'],
+    remote_path="/home/model.pth",
+    local_path="./model.pth"
+)
+
+# Directory sync
+lium.sync_directory(
+    pod_id=pod['id'],
+    local_path="./data/",
+    remote_path="/home/data/",
+    direction="up",  # "up" or "down"
+    delete=False,
+    exclude=["*.tmp", "__pycache__"]
+)
+```
+
+### Cleanup
+```python
+# Stop pods
+lium.stop_pod(pod_id=pod['id'])
+
+# Get templates
+templates = lium.get_templates()
+```
+
+## DATA CLASSES
+
+### ExecutorInfo
+```python
+@dataclass
+class ExecutorInfo:
+    id: str                    # UUID
+    huid: str                  # Human ID (e.g., "noble-matrix-a3")
+    machine_name: str          # Machine description
+    gpu_type: str              # GPU model (e.g., "H100")
+    gpu_count: int             # Number of GPUs
+    price_per_hour: float      # Total price per hour
+    price_per_gpu_hour: float  # Price per GPU per hour
+    location: Dict[str, str]   # Location info
+    specs: Dict[str, Any]      # Hardware specs
+    status: str                # Availability status
+```
+
+### PodInfo
+```python
+@dataclass
+class PodInfo:
+    id: str                    # Pod UUID
+    name: str                  # Pod name
+    status: str                # Pod status
+    huid: str                  # Human ID
+    ssh_cmd: Optional[str]     # SSH connection command
+    ports: Dict[str, int]      # Port mappings
+    created_at: str            # Creation timestamp
+    updated_at: str            # Update timestamp
+    executor: Dict[str, Any]   # Executor details
+    template: Dict[str, Any]   # Template details
+```
+
+## DIRECT API CLIENT
+
+```python
+from lium import LiumAPIClient
+
+client = LiumAPIClient(api_key="your_key")
+
+# Raw API methods
+executors = client.get_executors()
+pods = client.get_pods()
+templates = client.get_templates()
+
+pod = client.rent_pod(
+    executor_id="uuid",
+    pod_name="name",
+    template_id="template_uuid",
+    user_public_keys=["ssh-rsa ..."]
+)
+
+client.unrent_pod(executor_id="uuid")
+```
+
+## UTILITY SCRIPTS
+
+### scripts/jupyter.sh
+Automated JupyterLab setup script:
+- Installs uv package manager
+- Creates Python virtual environment
+- Installs JupyterLab + extensions
+- Starts JupyterLab server on port 20000
+- Provides external access URL with token
+
+Usage:
+```bash
+lium exec 1 --script scripts/jupyter.sh
+```
+
+## CONFIGURATION MANAGEMENT
+
+**Config Functions:**
+```python
+from lium.config import (
+    get_config_value,
+    set_config_value,
+    get_api_key,
+    get_ssh_public_keys,
+    load_config_parser
+)
+
+# Get values
+api_key = get_config_value("api.api_key")
+ssh_path = get_config_value("ssh.key_path")
+
+# Set values
+set_config_value("api.api_key", "new_key")
+set_config_value("template.default_id", "uuid")
+```
+
+## HELPER FUNCTIONS
+
+Key utilities in `lium/helpers.py`:
+- `generate_human_id(uuid)` - Convert UUID to human-readable ID
+- `extract_gpu_model(machine_name)` - Extract GPU type from machine name
+- `resolve_executor_indices(indices)` - Convert CLI indices to executor IDs
+
+## ERROR HANDLING
+
+**Common Patterns:**
+- API errors: `requests.exceptions.HTTPError`
+- SSH errors: `paramiko.ssh_exception.SSHException`
+- Config errors: `ValueError` for missing API key/SSH key
+- Timeout errors: Command execution timeouts
+
+**Best Practices:**
+- Always check `result['success']` for command execution
+- Use `wait_for_pod_ready()` before executing commands
+- Handle SSH connection failures gracefully
+- Clean up pods in finally blocks
+
+## DEPENDENCIES
+
+Core dependencies (from pyproject.toml):
+- click>=8.1.0 (CLI framework)
+- rich>=13.0.0 (Terminal formatting)
+- requests>=2.31.0 (HTTP client)
+- paramiko>=3.0.0 (SSH client)
+- bittensor (Blockchain integration)
+- docker (Container management)
+
+## ENVIRONMENT VARIABLES
+
+- `LIUM_API_KEY` - API key (alternative to config file)
+- Used by CLI `--api-key` option and SDK initialization
+
+## COMMON PATTERNS
+
+### Typical Workflow
+```python
+# 1. Initialize
+lium = LiumSDK()
+
+# 2. Find executor
+executors = lium.list_executors(gpu_type="H100")
+best = min(executors, key=lambda x: x.price_per_gpu_hour)
+
+# 3. Start pod
+pod = lium.start_pod(executor_id=best.id, pod_name="job")
+
+# 4. Wait for readiness
+lium.wait_for_pod_ready(pod['id'])
+
+# 5. Upload code
+lium.upload_file(pod['id'], "./script.py", "/home/script.py")
+
+# 6. Execute
+result = lium.execute_command(pod['id'], "python /home/script.py")
+
+# 7. Download results
+lium.download_file(pod['id'], "/home/output.txt", "./output.txt")
+
+# 8. Cleanup
+lium.stop_pod(pod['id'])
+```
+
+### CLI Equivalent
+```bash
+lium ls H100
+lium up <best_executor>
+lium scp <pod> ./script.py
+lium exec <pod> "python /home/script.py"
+lium scp <pod>:/home/output.txt ./output.txt
+lium down <pod>
+```
+
+This covers the complete Lium system architecture, API, and usage patterns for both CLI and SDK interfaces. 

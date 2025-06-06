@@ -1,7 +1,7 @@
 [project]
 name = "lium"
-version = "0.1.0"
-description = "CLI tool for managing lium executors"
+version = "0.2.0"
+description = "CLI tool and Python SDK for managing Celium Compute GPU pods"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

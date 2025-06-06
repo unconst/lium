@@ -2,7 +2,7 @@
 
 TAO + LIUM = GPU
 
-Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal.
+Manage [Celium](https://celiumcompute.ai) GPU pods from your terminal and Python scripts.
 
 ---
 ### Install 
@@ -15,7 +15,7 @@ git clone git@github.com:unconst/lium.git && cd lium
 uv venv && source .venv/bin/activate && uv pip install -e .
 ```
 
-### Use
+## CLI Usage
 
 ---
 `lium init` 
@@ -161,127 +161,86 @@ lium config show
 ![Lium config show](assets/liumconfigshow.png)
 
 ---
+
+## Python SDK Usage
+
+Lium also provides a comprehensive Python SDK for programmatic access to all CLI functionality:
+
+```python
+from lium import LiumSDK
+
+# Initialize SDK (uses same config as CLI)
+lium = LiumSDK()
+
+# List available H100 executors
+h100s = lium.list_executors(gpu_type="H100")
+cheapest = min(h100s, key=lambda x: x.price_per_gpu_hour)
+
+# Start a pod
+pod = lium.start_pod(
+    executor_id=cheapest.id,
+    pod_name="my-training-job"
+)
+
+# Wait for pod to be ready
+lium.wait_for_pod_ready(pod['id'])
+
+# Execute commands
+result = lium.execute_command(
+    pod_id=pod['id'],
+    command="nvidia-smi",
+    env_vars={"CUDA_VISIBLE_DEVICES": "0"}
+)
+
+# Upload files
+lium.upload_file(
+    pod_id=pod['id'],
+    local_path="./train.py", 
+    remote_path="/home/train.py"
+)
+
+# Download results
+lium.download_file(
+    pod_id=pod['id'],
+    remote_path="/home/model.pth",
+    local_path="./model.pth"
+)
+
+# Stop pod when done
+lium.stop_pod(pod_id=pod['id'])
+```
+
+### SDK Features
+
+- **Same Configuration**: Uses the same `~/.lium/config.ini` as the CLI
+- **Full Feature Parity**: All CLI commands available as Python methods
+- **Type Safety**: Rich data classes for executors and pods
+- **Error Handling**: Proper exception handling with meaningful messages
+- **SSH Integration**: Automatic SSH key detection and connection handling
+
+### SDK Installation
+
+The SDK is included automatically when you install Lium:
+
+```bash
+uv pip install -e .
+```
+
+Then import and use:
+
+```python
+from lium import LiumSDK, PodInfo, ExecutorInfo
+```
+
+For detailed SDK documentation, see the included examples and docstrings.
+
+---
+
 ## License
 
 2025 Yuma Rao
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Commands
-
-### `lium rsync` - Sync Directories with Pods
-
-The `lium rsync` command provides powerful directory synchronization capabilities between your local machine and running pods using rsync. It supports bidirectional sync, multiple pod operations, and comprehensive rsync options.
-
-#### Basic Usage
-
-```bash
-# Sync local directory to multiple pods
-lium rsync ~/project/ 1,2:/home/project/
-
-# Sync from pod to local directory  
-lium rsync 1:/home/project/ ~/backup/
-
-# Sync from all pods to local directory
-lium rsync all:/home/logs/ ~/collected/
-
-# Sync with options
-lium rsync ~/data/ all:/workspace/ --delete --exclude '*.tmp' --progress
-```
-
-#### Path Formats
-
-**Local paths:**
-- `/path/to/dir/` - Absolute path
-- `~/myproject/` - Home directory relative path
-- `./relative/` - Relative to current directory
-
-**Remote paths:**
-- `pod_targets:/path/to/dir/` - Remote path on pods
-
-**Pod targets** can be:
-- Pod HUIDs: `zesty-orbit-08:/path/`
-- Index numbers from `lium ps`: `1:/path/`, `2:/path/`
-- Comma-separated: `1,2:/path/` (syncs with multiple pods)
-- All pods: `all:/path/`
-
-#### Options
-
-| Option | Description |
-|--------|-------------|
-| `--delete` | Delete extraneous files from destination dirs (use with caution) |
-| `--exclude PATTERN` | Exclude files matching pattern. Can be used multiple times |
-| `--dry-run, -n` | Show what would be transferred without making changes |
-| `--archive, -a` | Archive mode (preserves permissions, times, etc). **Enabled by default** |
-| `--verbose, -v` | Increase verbosity of rsync output |
-| `--compress, -z` | Compress file data during the transfer |
-| `--retry-attempts N` | Number of retry attempts on failure (default: 3) |
-| `--progress` | Show progress during transfer |
-
-#### Examples
-
-**Development Workflow:**
-```bash
-# Initial sync of project to pods
-lium rsync ~/myproject/ all:/workspace/myproject/ --progress
-
-# Incremental updates during development
-lium rsync ~/myproject/ 1,2:/workspace/myproject/ --exclude '*.pyc' --exclude '__pycache__'
-
-# Collect results from all pods
-lium rsync all:/workspace/results/ ~/results/ --dry-run  # Check first
-lium rsync all:/workspace/results/ ~/results/
-```
-
-**Data Management:**
-```bash
-# Backup logs from all pods
-lium rsync all:/var/log/myapp/ ~/backups/logs/
-
-# Distribute datasets to pods
-lium rsync ~/datasets/ all:/data/ --compress --progress
-
-# Clean sync (remove files not in source)
-lium rsync ~/config/ all:/app/config/ --delete
-```
-
-#### Advanced Features
-
-**Fault Tolerance:**
-- Automatic retry on transient failures (configurable with `--retry-attempts`)
-- Continues with other pods if one fails
-- Validates paths before starting operations
-- Intelligent error detection (skips retries for permission errors)
-
-**Multiple Pod Operations:**
-- Sync to/from multiple pods simultaneously
-- Individual success/failure tracking per pod
-- Comprehensive operation summary
-
-**Safety Features:**
-- Dry-run mode to preview changes
-- Archive mode enabled by default (preserves permissions, timestamps, etc.)
-- Path validation before operations
-- Clear error messages and warnings
-
-#### Important Notes
-
-1. **Trailing Slashes Matter**: 
-   - `~/project/` syncs the *contents* of project directory
-   - `~/project` syncs the project directory itself
-
-2. **Prerequisites**:
-   - `rsync` must be installed on your system
-   - SSH key must be configured: `lium config set ssh.key_path /path/to/key`
-   - Pods must be in RUNNING state
-
-3. **Limitations**:
-   - Remote-to-remote sync between pods not currently supported
-   - Use local intermediate directory for pod-to-pod transfers
-
-4. **Performance**:
-   - Use `--compress` for slow networks
-   - Use `--progress` to monitor large transfers
-   - Archive mode (`-a`) is enabled by default for data integrity
