@@ -6,7 +6,7 @@ This script demonstrates how to use the integrated Lium SDK
 for programmatic pod management.
 """
 
-from lium import LiumSDK, PodInfo, ExecutorInfo
+from lium import Lium, PodInfo, ExecutorInfo
 import time
 
 
@@ -15,7 +15,7 @@ def main():
     
     # Initialize SDK - uses same config as CLI
     try:
-        lium = LiumSDK()
+        lium = Lium()
         print("✅ Lium SDK initialized successfully")
     except ValueError as e:
         print(f"❌ Failed to initialize SDK: {e}")

@@ -555,7 +555,8 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         )
     
     console.print(table)
-    
+    console.print(styled('Use: `lium up #`', 'info'))
+
 
 def build_docker_image(image_name:str, dockerfilepath:str):
     

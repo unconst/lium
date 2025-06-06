@@ -4,10 +4,10 @@ __version__ = "0.2.0"
 
 # Expose SDK components at package level
 from .sdk import (
-    LiumSDK,
+    Lium,
     PodInfo,
     ExecutorInfo,
-    create_client,
+    init,
     list_gpu_types
 )
 
@@ -15,10 +15,10 @@ from .sdk import (
 from .api import LiumAPIClient
 
 __all__ = [
-    "LiumSDK",
+    "Lium",
     "PodInfo", 
     "ExecutorInfo",
-    "create_client",
+    "init",
     "list_gpu_types",
     "LiumAPIClient"
 ] 

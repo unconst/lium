@@ -50,33 +50,35 @@ class ExecutorInfo:
     status: str
 
 
-class LiumSDK:
+class Lium:
     """
     Lium SDK for managing Celium Compute GPU pods.
     
     Example usage:
         # Initialize
-        from lium import LiumSDK
-        lium = LiumSDK(api_key="your-api-key")
+        from lium import Lium
+        lium = Lium(api_key="your-api-key")
         
-        # List available executors
-        executors = lium.list_executors()
-        h100s = lium.list_executors(gpu_type="H100")
+        # List available pods
+        all_pods = lium.ls()
+        h100s = lium.ls(gpu_type="H100")
         
         # Start pods
-        pod = lium.start_pod(executor_id="executor-uuid", pod_name="my-pod")
+        pod = lium.up(executor_id="executor-uuid", pod_name="my-pod")
         
         # List active pods
-        pods = lium.list_pods()
+        my_pods = lium.ps()
         
-        # Execute commands
-        result = lium.execute_command(pod_id="pod-uuid", command="nvidia-smi")
+        # Execute commands - accepts pod ID, name, HUID, or PodInfo object
+        result = lium.exec(pod, command="nvidia-smi")
+        result = lium.exec("my-pod", command="nvidia-smi")
+        result = lium.exec("pod-uuid", command="nvidia-smi")
         
-        # Transfer files
-        lium.upload_file(pod_id="pod-uuid", local_path="./file.txt", remote_path="/home/file.txt")
+        # Transfer files - accepts pod ID, name, HUID, or PodInfo object
+        lium.scp("my-pod", local_path="./file.txt", remote_path="/home/file.txt")
         
-        # Stop pods
-        lium.stop_pod(pod_id="pod-uuid")
+        # Stop pods - accepts pod ID, name, HUID, or PodInfo object
+        lium.down("my-pod")
     """
     
     def __init__(self, api_key: Optional[str] = None, base_url: str = "https://celiumcompute.ai/api"):
@@ -113,6 +115,31 @@ class LiumSDK:
         from .helpers import extract_gpu_model
         return extract_gpu_model(machine_name)
     
+    def _resolve_pod(self, pod: Union[str, PodInfo]) -> PodInfo:
+        """
+        Resolve pod identifier to PodInfo object.
+        
+        Args:
+            pod: Pod ID, name, HUID, or PodInfo object
+            
+        Returns:
+            PodInfo object
+            
+        Raises:
+            ValueError: If pod not found
+        """
+        if isinstance(pod, PodInfo):
+            return pod
+        
+        # It's a string identifier - search by ID, name, or HUID
+        pods = self.ps()
+        found_pod = next((p for p in pods if p.id == pod or p.name == pod or p.huid == pod), None)
+        
+        if not found_pod:
+            raise ValueError(f"Pod '{pod}' not found")
+        
+        return found_pod
+    
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """Make HTTP request to API."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
@@ -122,7 +149,7 @@ class LiumSDK:
     
     # Core API Methods
     
-    def list_executors(self, gpu_type: Optional[str] = None) -> List[ExecutorInfo]:
+    def ls(self, gpu_type: Optional[str] = None) -> List[ExecutorInfo]:
         """
         List available executors.
         
@@ -161,7 +188,7 @@ class LiumSDK:
         
         return executors
     
-    def list_pods(self) -> List[PodInfo]:
+    def ps(self) -> List[PodInfo]:
         """
         List active pods.
         
@@ -199,7 +226,7 @@ class LiumSDK:
         response = self._make_request("GET", "/templates")
         return response.json()
     
-    def start_pod(self, executor_id: str, pod_name: str, template_id: Optional[str] = None, 
+    def up(self, executor_id: str, pod_name: str, template_id: Optional[str] = None, 
                   ssh_public_keys: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Start a new pod on an executor.
@@ -232,7 +259,7 @@ class LiumSDK:
         }
         
         # Get initial pod list to compare after creation
-        initial_pods = {p.name: p.id for p in self.list_pods()}
+        initial_pods = {p.name: p.id for p in self.ps()}
         
         response = self._make_request("POST", f"/executors/{executor_id}/rent", json=payload)
         api_response = response.json()
@@ -245,7 +272,7 @@ class LiumSDK:
         # Wait a moment for the pod to appear
         time.sleep(2)
         
-        current_pods = self.list_pods()
+        current_pods = self.ps()
         for pod in current_pods:
             if pod.name == pod_name and pod.name not in initial_pods:
                 return {
@@ -260,27 +287,23 @@ class LiumSDK:
         # If we still can't find it, return what we have
         return api_response or {'name': pod_name, 'executor_id': executor_id}
     
-    def stop_pod(self, pod_id: Optional[str] = None, executor_id: Optional[str] = None) -> Dict[str, Any]:
+    def down(self, pod: Optional[Union[str, PodInfo]] = None, executor_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Stop a pod.
         
         Args:
-            pod_id: Pod ID to stop
-            executor_id: Executor ID (if pod_id not provided)
+            pod: Pod ID, name, HUID, or PodInfo object to stop
+            executor_id: Executor ID (if pod not provided)
             
         Returns:
             API response
         """
-        if pod_id:
-            # Get executor ID from pod
-            pods = self.list_pods()
-            pod = next((p for p in pods if p.id == pod_id), None)
-            if not pod:
-                raise ValueError(f"Pod {pod_id} not found")
-            executor_id = pod.executor.get("id")
+        if pod:
+            pod_info = self._resolve_pod(pod)
+            executor_id = pod_info.executor.get("id")
         
         if not executor_id:
-            raise ValueError("Either pod_id or executor_id must be provided")
+            raise ValueError("Either pod or executor_id must be provided")
         
         response = self._make_request("DELETE", f"/executors/{executor_id}/rent")
         return response.json()
@@ -317,20 +340,16 @@ class LiumSDK:
         from .config import get_ssh_public_keys
         return get_ssh_public_keys()
     
-    def _get_ssh_connection_info(self, pod_id: str) -> Tuple[str, str, int]:
+    def _get_ssh_connection_info(self, pod: Union[str, PodInfo]) -> Tuple[str, str, int]:
         """Get SSH connection info for a pod."""
-        pods = self.list_pods()
-        pod = next((p for p in pods if p.id == pod_id or p.huid == pod_id), None)
+        pod_info = self._resolve_pod(pod)
         
-        if not pod:
-            raise ValueError(f"Pod {pod_id} not found")
-        
-        if not pod.ssh_cmd:
-            raise ValueError(f"Pod {pod_id} has no SSH connection available")
+        if not pod_info.ssh_cmd:
+            raise ValueError(f"Pod {pod_info.name} has no SSH connection available")
         
         # Parse SSH command: "ssh user@host -p port"
         import shlex
-        parts = shlex.split(pod.ssh_cmd)
+        parts = shlex.split(pod_info.ssh_cmd)
         user_host = parts[1]
         user, host = user_host.split('@')
         
@@ -342,13 +361,13 @@ class LiumSDK:
         
         return user, host, port
     
-    def execute_command(self, pod_id: str, command: str, env_vars: Optional[Dict[str, str]] = None,
+    def exec(self, pod: Union[str, PodInfo], command: str, env_vars: Optional[Dict[str, str]] = None,
                        timeout: int = 30) -> Dict[str, Any]:
         """
         Execute a command on a pod via SSH.
         
         Args:
-            pod_id: Pod ID or HUID
+            pod: Pod ID, name, HUID, or PodInfo object
             command: Command to execute
             env_vars: Environment variables to set
             timeout: SSH connection timeout
@@ -360,7 +379,7 @@ class LiumSDK:
         if not private_key_path or not private_key_path.exists():
             raise ValueError("SSH private key not found. Configure ssh.key_path in ~/.lium/config.ini")
         
-        user, host, port = self._get_ssh_connection_info(pod_id)
+        user, host, port = self._get_ssh_connection_info(pod)
         
         # Prepare command with environment variables
         if env_vars:
@@ -402,12 +421,12 @@ class LiumSDK:
         finally:
             ssh_client.close()
     
-    def upload_file(self, pod_id: str, local_path: str, remote_path: str, timeout: int = 30) -> None:
+    def scp(self, pod: Union[str, PodInfo], local_path: str, remote_path: str, timeout: int = 30) -> None:
         """
         Upload a file to a pod via SFTP.
         
         Args:
-            pod_id: Pod ID or HUID
+            pod: Pod ID, name, HUID, or PodInfo object
             local_path: Local file path
             remote_path: Remote file path
             timeout: Connection timeout
@@ -416,7 +435,7 @@ class LiumSDK:
         if not private_key_path or not private_key_path.exists():
             raise ValueError("SSH private key not found")
         
-        user, host, port = self._get_ssh_connection_info(pod_id)
+        user, host, port = self._get_ssh_connection_info(pod)
         
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -444,12 +463,12 @@ class LiumSDK:
         finally:
             ssh_client.close()
     
-    def download_file(self, pod_id: str, remote_path: str, local_path: str, timeout: int = 30) -> None:
+    def download_file(self, pod: Union[str, PodInfo], remote_path: str, local_path: str, timeout: int = 30) -> None:
         """
         Download a file from a pod via SFTP.
         
         Args:
-            pod_id: Pod ID or HUID
+            pod: Pod ID, name, HUID, or PodInfo object
             remote_path: Remote file path
             local_path: Local file path
             timeout: Connection timeout
@@ -458,7 +477,7 @@ class LiumSDK:
         if not private_key_path or not private_key_path.exists():
             raise ValueError("SSH private key not found")
         
-        user, host, port = self._get_ssh_connection_info(pod_id)
+        user, host, port = self._get_ssh_connection_info(pod)
         
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -486,13 +505,13 @@ class LiumSDK:
         finally:
             ssh_client.close()
     
-    def sync_directory(self, pod_id: str, local_path: str, remote_path: str, 
+    def sync_directory(self, pod: Union[str, PodInfo], local_path: str, remote_path: str, 
                       direction: str = "up", delete: bool = False, exclude: Optional[List[str]] = None) -> bool:
         """
         Sync directories using rsync.
         
         Args:
-            pod_id: Pod ID or HUID
+            pod: Pod ID, name, HUID, or PodInfo object
             local_path: Local directory path
             remote_path: Remote directory path
             direction: "up" (local to remote) or "down" (remote to local)
@@ -506,7 +525,7 @@ class LiumSDK:
         if not private_key_path or not private_key_path.exists():
             raise ValueError("SSH private key not found")
         
-        user, host, port = self._get_ssh_connection_info(pod_id)
+        user, host, port = self._get_ssh_connection_info(pod)
         
         # Build rsync command
         rsync_cmd = [
@@ -534,25 +553,26 @@ class LiumSDK:
     
     # Utility Methods
     
-    def wait_for_pod_ready(self, pod_id: str, max_wait: int = 300, check_interval: int = 10) -> bool:
+    def wait_for_pod_ready(self, pod: Union[str, PodInfo], max_wait: int = 300, check_interval: int = 10) -> bool:
         """
         Wait for a pod to be ready.
         
         Args:
-            pod_id: Pod ID
+            pod: Pod ID, name, HUID, or PodInfo object
             max_wait: Maximum wait time in seconds
             check_interval: Check interval in seconds
             
         Returns:
             True if pod is ready, False if timeout
         """
+        pod_info = self._resolve_pod(pod)
         start_time = time.time()
         
         while time.time() - start_time < max_wait:
-            pods = self.list_pods()
-            pod = next((p for p in pods if p.id == pod_id), None)
+            pods = self.ps()
+            current_pod = next((p for p in pods if p.id == pod_info.id), None)
             
-            if pod and pod.status.upper() == "RUNNING" and pod.ssh_cmd:
+            if current_pod and current_pod.status.upper() == "RUNNING" and current_pod.ssh_cmd:
                 return True
             
             time.sleep(check_interval)
@@ -561,24 +581,24 @@ class LiumSDK:
     
     def get_pod_by_name(self, name: str) -> Optional[PodInfo]:
         """Get pod by name or HUID."""
-        pods = self.list_pods()
+        pods = self.ps()
         return next((p for p in pods if p.name == name or p.huid == name), None)
     
     def get_executor_by_huid(self, huid: str) -> Optional[ExecutorInfo]:
         """Get executor by HUID."""
-        executors = self.list_executors()
+        executors = self.ls()
         return next((e for e in executors if e.huid == huid), None)
 
 
 # Convenience functions
 
-def create_client(api_key: Optional[str] = None) -> LiumSDK:
+def init(api_key: Optional[str] = None) -> Lium:
     """Create a Lium SDK client."""
-    return LiumSDK(api_key=api_key)
+    return Lium(api_key=api_key)
 
 
 def list_gpu_types(api_key: Optional[str] = None) -> List[str]:
     """Get list of available GPU types."""
-    client = LiumSDK(api_key=api_key)
-    executors = client.list_executors()
+    client = Lium(api_key=api_key)
+    executors = client.ls()
     return list(set(e.gpu_type for e in executors)) 

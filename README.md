@@ -167,10 +167,10 @@ lium config show
 Lium also provides a comprehensive Python SDK for programmatic access to all CLI functionality:
 
 ```python
-from lium import LiumSDK
+from lium import Lium
 
 # Initialize SDK (uses same config as CLI)
-lium = LiumSDK()
+lium = Lium()
 
 # List available H100 executors
 h100s = lium.list_executors(gpu_type="H100")
@@ -229,7 +229,7 @@ uv pip install -e .
 Then import and use:
 
 ```python
-from lium import LiumSDK, PodInfo, ExecutorInfo
+from lium import Lium, PodInfo, ExecutorInfo
 ```
 
 For detailed SDK documentation, see the included examples and docstrings.

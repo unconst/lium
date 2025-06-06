@@ -6,12 +6,12 @@ Lium is a CLI tool and Python SDK for managing Celium Compute GPU pods. It provi
 
 **Entry Points:**
 - CLI: `lium` command (defined in pyproject.toml as `lium.cli:main`)
-- SDK: `from lium import LiumSDK`
+- SDK: `from lium import Lium`
 - Direct API: `from lium import LiumAPIClient`
 
 **Core Modules:**
 - `lium/cli.py` - CLI entry point
-- `lium/sdk.py` - Python SDK (LiumSDK class)
+- `lium/sdk.py` - Python SDK (Lium class)
 - `lium/api.py` - Direct API client (LiumAPIClient class)
 - `lium/config.py` - Configuration management (~/.lium/config.ini)
 - `lium/commands/` - CLI command implementations
@@ -123,12 +123,12 @@ lium exec 1 --script scripts/jupyter.sh  # Start Jupyter
 
 ### Basic Usage
 ```python
-from lium import LiumSDK, PodInfo, ExecutorInfo
+from lium import Lium, PodInfo, ExecutorInfo
 
 # Initialize (uses ~/.lium/config.ini)
-lium = LiumSDK()
+lium = Lium()
 # Or with explicit API key
-lium = LiumSDK(api_key="your_key")
+lium = Lium(api_key="your_key")
 ```
 
 ### Core Operations
@@ -330,7 +330,7 @@ Core dependencies (from pyproject.toml):
 ### Typical Workflow
 ```python
 # 1. Initialize
-lium = LiumSDK()
+lium = Lium()
 
 # 2. Find executor
 executors = lium.list_executors(gpu_type="H100")
