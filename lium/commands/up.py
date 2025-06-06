@@ -171,6 +171,31 @@ def up_command(
     for item in pod_names_or_ids: raw_identifiers.extend(item.strip() for item in item.split(',') if item.strip())
     target_identifiers = [ident for ident in raw_identifiers if ident]
     if not target_identifiers: console.print(styled("Error: No executor Names (HUIDs) or UUIDs provided.", "error")); return
+    
+    # Check if any of the identifiers are indices (numbers)
+    potential_indices = []
+    non_index_identifiers = []
+    
+    for identifier in target_identifiers:
+        try:
+            index = int(identifier)
+            potential_indices.append(identifier)
+        except ValueError:
+            non_index_identifiers.append(identifier)
+    
+    # If we have potential indices, try to resolve them first
+    if potential_indices:
+        resolved_executor_ids, error_msg = resolve_executor_indices(potential_indices)
+        if error_msg:
+            console.print(styled(f"Error resolving indices: {error_msg}", "error"))
+            if not resolved_executor_ids:
+                return
+            else:
+                console.print(styled("Continuing with resolved indices...", "warning"))
+        
+        # Replace the indices with resolved executor IDs
+        target_identifiers = resolved_executor_ids + non_index_identifiers
+    
     executors_to_process: List[Dict[str, Any]] = []; all_executors_data = None; failed_resolutions = []
     # Fetch executor list once if any HUIDs are present or if we need to resolve UUIDs to HUIDs for API pod_name
     fetch_all_execs = any(bool(re.match(r"^[a-z]+-[a-z]+-[0-9a-f]{2}$", ident.lower())) or '-' in ident for ident in target_identifiers)

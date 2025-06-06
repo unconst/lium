@@ -2,6 +2,8 @@ import os
 import re
 import docker
 import hashlib
+import sys
+import json
 from rich.text import Text
 from rich.table import Table
 from rich.panel import Panel
@@ -11,9 +13,10 @@ from rich.console import Console
 from rich import print as rprint
 from rich.box import ROUNDED, MINIMAL
 from datetime import datetime, timezone
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
+from pathlib import Path
 from .styles import get_theme, styled
-from .config import get_or_set_docker_credentials
+from .config import get_or_set_docker_credentials, get_config_value, set_config_value
 from typing import Any, Dict, List, Optional, Tuple
 
 console = Console(theme=get_theme())
@@ -406,8 +409,76 @@ def show_gpu_summary(executors: List[Dict[str, Any]]) -> Optional[str]:
         return None
 
 
+def store_executor_selection(gpu_type: str, executors: List[Dict[str, Any]]) -> None:
+    """Store the last executor selection for a GPU type."""
+    selection_data = {
+        'gpu_type': gpu_type,
+        'timestamp': datetime.now().isoformat(),
+        'executors': []
+    }
+    
+    for executor in executors:
+        selection_data['executors'].append({
+            'id': executor.get('id'),
+            'huid': generate_human_id(executor.get('id', '')),
+            'price_per_hour': executor.get('price_per_hour'),
+            'gpu_count': executor.get('specs', {}).get('gpu', {}).get('count', 1),
+            'location': executor.get('location', {}).get('country', 'Unknown')
+        })
+    
+    set_config_value('last_selection.data', json.dumps(selection_data))
+
+
+def get_last_executor_selection() -> Optional[Dict[str, Any]]:
+    """Retrieve the last executor selection."""
+    selection_json = get_config_value('last_selection.data')
+    if selection_json:
+        try:
+            return json.loads(selection_json)
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def resolve_executor_indices(indices: List[str]) -> Tuple[List[str], Optional[str]]:
+    """
+    Resolve executor indices from the last selection.
+    Returns (resolved_executor_ids, error_message)
+    """
+    last_selection = get_last_executor_selection()
+    if not last_selection:
+        return [], "No previous executor selection found. Please run 'lium ls <GPU_TYPE>' first."
+    
+    executors = last_selection.get('executors', [])
+    if not executors:
+        return [], "No executors in last selection."
+    
+    resolved_ids = []
+    failed_resolutions = []
+    
+    for index_str in indices:
+        try:
+            index = int(index_str)
+            if 1 <= index <= len(executors):
+                executor_data = executors[index - 1]
+                resolved_ids.append(executor_data['id'])
+            else:
+                failed_resolutions.append(f"{index_str} (index out of range 1-{len(executors)})")
+        except ValueError:
+            failed_resolutions.append(f"{index_str} (not a valid index)")
+    
+    error_msg = None
+    if failed_resolutions:
+        error_msg = f"Could not resolve indices: {', '.join(failed_resolutions)}"
+    
+    return resolved_ids, error_msg
+
+
 def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
     """Show detailed information for Pareto optimal executors of a specific GPU type."""
+    # Store the selection for later use with indices
+    store_executor_selection(gpu_type, executors)
+    
     # Calculate Pareto frontier
     pareto_results = calculate_pareto_frontier(executors) # This already sorts Pareto optimal first, then by price
     
@@ -438,7 +509,8 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         expand=True
     )
     
-    # Add columns - reorganized for better readability, removed Pareto marker and GPU%
+    # Add columns - reorganized for better readability, added index column
+    table.add_column("#", style="dim", justify="right", width=3)  # Index column
     table.add_column("Pod", style="dim", no_wrap=False, min_width=15, max_width=20)
     table.add_column("Config", style="executor.gpu", no_wrap=True)
     table.add_column("$/GPU/hr", style="executor.price", justify="right")
@@ -466,6 +538,7 @@ def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
         
         style = "table.row.odd" if idx % 2 == 0 else "table.row.even"
         table.add_row(
+            str(idx + 1),  # Index number starting from 1
             executor_name_huid, # This is for the "Pod" column
             config,
             format_metric(metrics.get('price_per_gpu_hour'), 'price_per_gpu_hour'),

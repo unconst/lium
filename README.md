@@ -48,10 +48,12 @@ lium ls H100
 ---
 `lium up`
 ```bash
+# Rent pod using index from ls
+lium up 1
 # Rent pod with HUID
 lium up noble-matrix-a3
-# Rent multiple pods
-lium up golden-pixel-2f, calm-jaguar-f6
+# Rent multiple pods from index and HUID.
+lium up 1, calm-jaguar-f6
 ```
 ![Lium up](assets/liumuppod.png)
 
