@@ -231,8 +231,34 @@ class LiumSDK:
             "user_public_key": ssh_public_keys
         }
         
+        # Get initial pod list to compare after creation
+        initial_pods = {p.name: p.id for p in self.list_pods()}
+        
         response = self._make_request("POST", f"/executors/{executor_id}/rent", json=payload)
-        return response.json()
+        api_response = response.json()
+        
+        # If API response contains pod info, return it
+        if api_response and 'id' in api_response:
+            return api_response
+        
+        # Otherwise, find the newly created pod by comparing pod lists
+        # Wait a moment for the pod to appear
+        time.sleep(2)
+        
+        current_pods = self.list_pods()
+        for pod in current_pods:
+            if pod.name == pod_name and pod.name not in initial_pods:
+                return {
+                    'id': pod.id,
+                    'name': pod.name,
+                    'status': pod.status,
+                    'huid': pod.huid,
+                    'ssh_cmd': pod.ssh_cmd,
+                    'executor_id': executor_id
+                }
+        
+        # If we still can't find it, return what we have
+        return api_response or {'name': pod_name, 'executor_id': executor_id}
     
     def stop_pod(self, pod_id: Optional[str] = None, executor_id: Optional[str] = None) -> Dict[str, Any]:
         """

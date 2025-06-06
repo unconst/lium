@@ -75,10 +75,6 @@ def main():
     print("🚀 INTERACTIVE DEMO")
     print("="*50)
     
-    response = input("\nWould you like to start a demo pod? (y/N): ").strip().lower()
-    if response != 'y':
-        print("Demo skipped. SDK ready for use!")
-        return
     
     # Find a cheap executor for demo
     print("\n🔍 Finding a suitable executor for demo...")
@@ -100,10 +96,6 @@ def main():
         
         # Confirm with user
         estimated_cost = cheapest.price_per_gpu_hour * 0.1  # Estimate 6 minutes
-        response = input(f"This will cost ~${estimated_cost:.2f} for a 6-minute demo. Continue? (y/N): ").strip().lower()
-        if response != 'y':
-            print("Demo cancelled")
-            return
         
     except Exception as e:
         print(f"❌ Failed to find suitable executor: {e}")
