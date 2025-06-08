@@ -226,7 +226,7 @@ class Lium:
         response = self._make_request("GET", "/templates")
         return response.json()
     
-    def up(self, executor_id: str, pod_name: str, template_id: Optional[str] = None, 
+    def up(self, executor_id: str, pod_name: str = None, template_id: Optional[str] = None, 
                   ssh_public_keys: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Start a new pod on an executor.

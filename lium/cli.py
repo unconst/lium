@@ -4,7 +4,7 @@ import click
 from .commands.ls import ls_command
 from .commands.ps import ps_command
 from .commands.up import up_command
-from .commands.down import down_command
+from .commands.rm import rm_command
 from .commands.image import image_command
 from .commands.fund import fund_command
 from .commands.init import init_command
@@ -24,7 +24,7 @@ def cli():
 cli.add_command(ls_command)
 cli.add_command(ps_command)
 cli.add_command(up_command)
-cli.add_command(down_command)
+cli.add_command(rm_command)
 cli.add_command(image_command)
 cli.add_command(fund_command)
 cli.add_command(init_command)

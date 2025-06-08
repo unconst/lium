@@ -122,14 +122,14 @@ lium rsync ~/data/ all:/workspace/ --delete --exclude '*.tmp'
 ![lium exec](assets/liumscp.png)
 
 ---
-`lium down`
+`lium rm`
 ```bash
 # Release rental by HUID
-lium down golden-pixel-2f
+lium rm golden-pixel-2f
 # Release multiple rentals
-lium down 1,2,3
+lium rm 1,2,3
 # Release all rentals
-lium down --all -y
+lium rm --all -y
 ```
 ![lium down](assets/liumdown.png)
 

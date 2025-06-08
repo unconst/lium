@@ -10,12 +10,12 @@ from ..api import LiumAPIClient
 from ..styles import styled
 from ..helpers import *
 
-@click.command(name="down", help="Unrent/terminate one or more pods. Use Name (HUID) or --all.")
+@click.command(name="rm", help="Unrent/terminate one or more pods. Use Name (HUID) or --all.")
 @click.argument("pod_targets", type=str, nargs=-1, required=False)
 @click.option("--all", '-a', "terminate_all", is_flag=True, help="Terminate all active pods.")
 @click.option("--yes", "-y", "skip_confirmation", is_flag=True, help="Skip confirmation prompts.") # Added -y alias
 @click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
-def down_command(pod_targets: Optional[Tuple[str, ...]], terminate_all: bool, skip_confirmation: bool, api_key: Optional[str]):
+def rm_command(pod_targets: Optional[Tuple[str, ...]], terminate_all: bool, skip_confirmation: bool, api_key: Optional[str]):
     """Unrents/terminates pod(s) identified by POD_TARGETS or all active pods.
     
     POD_TARGETS can be:
@@ -25,9 +25,9 @@ def down_command(pod_targets: Optional[Tuple[str, ...]], terminate_all: bool, sk
     - Special: all (all pods, same as --all)
     
     Examples:
-    - lium down 1,2,3
-    - lium down all
-    - lium down zesty-orbit-08
+    - lium rm 1,2,3
+    - lium rm all
+    - lium rm zesty-orbit-08
     """
     if not api_key: api_key = get_or_set_api_key()
     if not api_key: console.print(styled("Error: No API key found.", "error")); return
