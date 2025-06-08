@@ -15,7 +15,7 @@ from ..helpers import *
 
 
 @click.command(name="scp", help="Copy a local file to a running pod.")
-@click.argument("pod_targets", type=str, nargs=-1, required=True)
+@click.argument("pod_targets", type=str, required=True)
 @click.argument(
     "local_path_str",
     type=click.Path(exists=True, dir_okay=False, readable=True),
@@ -37,7 +37,7 @@ from ..helpers import *
 )
 @click.option("-k", "--api-key", envvar="LIUM_API_KEY", help="API key for authentication")
 def scp_command(
-    pod_targets: tuple,
+    pod_targets: str,
     local_path_str: Optional[str],
     remote_path_str: Optional[str],
     coldkey: Optional[str],
@@ -47,9 +47,9 @@ def scp_command(
     """
     Copies files to pod(s) identified by POD_TARGETS.
 
-    POD_TARGETS can be:
+    POD_TARGETS should be a single argument that can contain:
     - Pod names/HUIDs: zesty-orbit-08
-    - Index numbers from 'lium ps': 1, 2, 3
+    - Index numbers from 'lium ps': 1 (or comma-separated: 1,2,3)
     - Comma-separated: 1,2,3 or 1,zesty-orbit-08
     - All pods: all
 
@@ -90,7 +90,8 @@ def scp_command(
     client = LiumAPIClient(api_key)
     
     # Resolve pod targets
-    resolved_pods, error_msg = resolve_pod_targets(client, pod_targets)
+    pod_targets_list = tuple(target.strip() for target in pod_targets.split(',') if target.strip())
+    resolved_pods, error_msg = resolve_pod_targets(client, pod_targets_list)
     
     if error_msg:
         console.print(styled(f"Error: {error_msg}", "error"))
