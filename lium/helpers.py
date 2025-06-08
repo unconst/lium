@@ -476,15 +476,16 @@ def resolve_executor_indices(indices: List[str]) -> Tuple[List[str], Optional[st
 
 def show_gpu_type_details(gpu_type: str, executors: List[Dict[str, Any]]):
     """Show detailed information for Pareto optimal executors of a specific GPU type."""
-    # Store the selection for later use with indices
-    store_executor_selection(gpu_type, executors)
-    
     # Calculate Pareto frontier
     pareto_results = calculate_pareto_frontier(executors) # This already sorts Pareto optimal first, then by price
     
     # Limit to showing a maximum of 10 entries
     MAX_ENTRIES_TO_SHOW = 10
     executors_to_display = pareto_results[:MAX_ENTRIES_TO_SHOW]
+    
+    # Store only the executors that will be displayed, so indices match what the user sees
+    displayed_executors = [executor for executor, is_pareto in executors_to_display]
+    store_executor_selection(gpu_type, displayed_executors)
     
     pareto_optimal_in_displayed = [executor for executor, is_pareto in executors_to_display if is_pareto]
     
